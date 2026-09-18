@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Supply Chain Verification Maven Plugin">
+  <body>
+    <menu name="Overview">
+      <item name="Home" href="index.html"/>
+      <item name="Plugin Documentation" href="plugin-info.html"/>
+    </menu>
+    <menu ref="reports"/>
+  </body>
+</project>

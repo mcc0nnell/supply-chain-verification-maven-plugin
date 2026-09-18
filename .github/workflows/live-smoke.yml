@@ -1,0 +1,33 @@
+name: live-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  maven-central-and-scorecard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Run live evidence demo
+        run: ./scripts/demo.sh
+      - name: Verify expected live observations
+        run: |
+          test -s demo/target/supply-chain-verification.ndjson
+          grep -q '"check":"public-sbom"' demo/target/supply-chain-verification.ndjson
+          grep -q '"check":"openssf-scorecard"' demo/target/supply-chain-verification.ndjson
+          grep -q '"gav":"org.apache.commons:commons-lang3:3.17.0".*"check":"public-sbom".*"status":"PASS"' demo/target/supply-chain-verification.ndjson
+          grep -q 'commons-lang3-3.17.0-cyclonedx.json' demo/target/supply-chain-verification.ndjson
+          grep -q '"gav":"org.apache.commons:commons-lang3:3.17.0".*"check":"openssf-scorecard".*"status":"PASS"' demo/target/supply-chain-verification.ndjson
+          grep -q 'api.securityscorecards.dev/projects/github.com/apache/commons-lang' demo/target/supply-chain-verification.ndjson

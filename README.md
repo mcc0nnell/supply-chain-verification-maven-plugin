@@ -1,87 +1,99 @@
 # Supply Chain Verification Maven Plugin
 
-Executable work toward [Maven Support & Care #224](https://github.com/support-and-care/maven-support-and-care/issues/224): make dependency and build-plugin supply-chain evidence visible inside the Maven build that consumes them.
+[![CI](https://github.com/mcc0nnell/supply-chain-verification-maven-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/mcc0nnell/supply-chain-verification-maven-plugin/actions/workflows/ci.yml)
 
-**Current release:** `0.3.0`
+A Maven-native evidence gate for the software you consume.
 
-The plugin is intentionally small. Maven coordinates go through independent `EvidenceCheck` providers and produce deterministic NDJSON that policy can report on or reject.
+The plugin inspects project dependencies and build plugins, asks independent evidence providers what is publicly verifiable about each component, and writes deterministic NDJSON that can be reviewed or enforced in the Maven lifecycle.
 
-## What works now
+It began as executable work toward [Maven Support & Care #224](https://github.com/support-and-care/maven-support-and-care/issues/224), whose initial scope calls for Maven-side verification of public SBOMs and OpenSSF Scorecard data.
 
-`public-sbom` performs real remote discovery against a Maven repository. For every dependency and build plugin it checks the conventional publication locations for:
+**Released:** `0.3.0`  
+**Development line:** `0.4.0-SNAPSHOT`  
+**Requirements:** Java 17+, Maven 3.9+
+
+## Why this exists
+
+Vulnerability scanning answers an important question, but not the only one. A consumer may also need to know whether an upstream component publishes an SBOM, whether a public project-health signal exists, and whether missing evidence should warn or fail the build.
+
+This plugin keeps those observations distinct:
+
+- `PASS` — the requested evidence was positively verified.
+- `WARN` — reserved for non-blocking provider findings.
+- `FAIL` — the provider reached a conclusive negative result.
+- `UNKNOWN` — the provider could not establish the answer.
+
+A timeout is therefore not reported as “no SBOM,” and ambiguous SCM metadata is not reported as “no Scorecard.”
+
+## Current checks
+
+### `public-sbom`
+
+Checks conventional Maven repository publication locations for:
 
 - CycloneDX JSON
 - CycloneDX XML
 - SPDX JSON
 
-A successful HTTP response produces `PASS`. Exhausting every known location with `404`/`410` produces `FAIL`. Network failures, transient server responses, and incomplete coordinates stay `UNKNOWN` rather than being misreported as absence.
+HTTP `2xx` is `PASS`; exhausting known locations with `404`/`410` is `FAIL`; transient or ambiguous responses remain `UNKNOWN`.
 
-`openssf-scorecard` is now live too. It reads SCM metadata from the component's published POM, follows parent POM inheritance when the child omits SCM, canonicalizes supported public GitHub and Apache GitBox references, and queries the OpenSSF Scorecard API. A retrieved score produces `PASS` by default; a missing public Scorecard result produces `FAIL`; ambiguous SCM or transient network/API failures remain `UNKNOWN`.
+### `openssf-scorecard`
 
-Set `minimumScorecardScore` to make a retrieved score below your chosen threshold return `FAIL`. The default is `-1`, which disables score-threshold enforcement while still verifying that Scorecard data is publicly available.
+Reads SCM metadata from the component's published POM, follows parent-POM inheritance when necessary, canonicalizes supported GitHub and Apache GitBox references, and queries the OpenSSF Scorecard API.
 
-## Run the demo
+A published score is `PASS` by default. Configure `minimumScorecardScore` to turn a score below your policy floor into `FAIL`.
 
-Requirements: Java 17+ and Maven 3.9+.
+## Use it
 
-```bash
-./scripts/demo.sh
-```
-
-The demo scans a real project containing `org.apache.commons:commons-lang3:3.17.0`. Maven Central publishes a CycloneDX SBOM for that artifact, so the report contains a real observation like:
-
-```json
-{"gav":"org.apache.commons:commons-lang3:3.17.0","kind":"DEPENDENCY","check":"public-sbom","status":"PASS","summary":"public SBOM published","locations":["https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0-cyclonedx.json"]}
-```
-
-The same run resolves Commons Lang's Apache GitBox SCM metadata to its GitHub mirror and retrieves the live OpenSSF Scorecard result:
-
-```json
-{"gav":"org.apache.commons:commons-lang3:3.17.0","kind":"DEPENDENCY","check":"openssf-scorecard","status":"PASS","summary":"OpenSSF Scorecard 8.1 (2026-09-15T16:58:50Z)","locations":["https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.pom","https://gitbox.apache.org/repos/asf?p=commons-lang.git","https://github.com/apache/commons-lang","https://api.securityscorecards.dev/projects/github.com/apache/commons-lang"]}
-```
-
-The complete report is written to:
-
-```
-demo/target/supply-chain-verification.ndjson
-```
-
-Checks run concurrently, while observations are written in deterministic component/check order.
-
-## Configure it
+Released configuration:
 
 ```xml
 <plugin>
   <groupId>io.github.mcc0nnell</groupId>
   <artifactId>supply-chain-verification-maven-plugin</artifactId>
   <version>0.3.0</version>
+  <executions>
+    <execution>
+      <phase>verify</phase>
+      <goals>
+        <goal>verify</goal>
+      </goals>
+    </execution>
+  </executions>
   <configuration>
-    <repositoryUrl>https://repo.maven.apache.org/maven2</repositoryUrl>
-    <requestTimeoutSeconds>5</requestTimeoutSeconds>
-    <parallelism>8</parallelism>
     <minimumScorecardScore>-1</minimumScorecardScore>
     <failOnFailure>false</failOnFailure>
     <failOnUnknown>false</failOnUnknown>
   </configuration>
-  <executions>
-    <execution>
-      <phase>verify</phase>
-      <goals><goal>verify</goal></goals>
-    </execution>
-  </executions>
 </plugin>
 ```
 
+The default report is:
+
+```text
+target/supply-chain-verification.ndjson
+```
+
+Example observation:
+
+```json
+{"gav":"org.apache.commons:commons-lang3:3.17.0","kind":"DEPENDENCY","check":"public-sbom","status":"PASS","summary":"public SBOM published","locations":["https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0-cyclonedx.json"]}
+```
+
+## Configuration
+
 | Property | Default | Meaning |
 | --- | ---: | --- |
-| `supplyChainVerification.repositoryUrl` | Maven Central | Repository used for public SBOM discovery |
+| `supplyChainVerification.skip` | `false` | Skip the goal entirely |
+| `supplyChainVerification.reportFile` | `target/supply-chain-verification.ndjson` | Evidence output path |
+| `supplyChainVerification.repositoryUrl` | Maven Central | Repository used for public SBOM and POM discovery |
 | `supplyChainVerification.requestTimeoutSeconds` | `5` | Connect/request timeout |
-| `supplyChainVerification.parallelism` | `8` | Maximum concurrent evidence checks |
-| `supplyChainVerification.minimumScorecardScore` | `-1` | Optional minimum OpenSSF Scorecard score; negative disables threshold enforcement |
-| `supplyChainVerification.failOnFailure` | `false` | Reject the build when a check conclusively returns `FAIL` |
-| `supplyChainVerification.failOnUnknown` | `false` | Reject the build when evidence cannot be resolved |
+| `supplyChainVerification.parallelism` | `8` | Maximum concurrent observations |
+| `supplyChainVerification.minimumScorecardScore` | `-1` | Optional minimum Scorecard score; negative disables the threshold |
+| `supplyChainVerification.failOnFailure` | `false` | Reject the build on conclusive failures |
+| `supplyChainVerification.failOnUnknown` | `false` | Reject the build when evidence is unresolved |
 
-Command-line properties use the `-D` form, for example:
+Command-line properties use normal Maven `-D` syntax:
 
 ```bash
 mvn verify \
@@ -89,43 +101,46 @@ mvn verify \
   -DsupplyChainVerification.failOnFailure=true
 ```
 
-## Evidence model
+## Development
 
-Each line records:
+The project deliberately separates deterministic build confidence from live external-system smoke testing.
 
-- Maven GAV
-- component kind (`DEPENDENCY` or `BUILD_PLUGIN`)
-- check identifier
-- `PASS`, `WARN`, `FAIL`, or `UNKNOWN`
-- a short reason
-- evidence/candidate locations
+```bash
+# Unit tests and plugin packaging
+mvn -B -ntp verify
 
-That distinction matters: a repository timeout is not the same fact as a missing SBOM.
+# Apache-style Maven Invoker integration test
+mvn -B -ntp -Prun-its verify
 
-## Deliberately not claimed yet
+# Live Maven Central + OpenSSF smoke test
+./scripts/demo.sh
 
-The current checks establish **public discoverability and live Scorecard retrieval**, not complete supply-chain truth. The project does not yet claim:
+# Generated Maven plugin/site documentation
+mvn site
+```
 
-- schema/content validation of retrieved SBOMs
-- universal Maven-coordinate → SCM resolution; v0.3.0 supports direct public GitHub SCM metadata, Apache GitBox → GitHub mirrors, and parent-POM inheritance
-- equivalence between a Maven artifact and whatever repository its published POM declares beyond that metadata chain
-- non-GitHub Scorecard targets
-- CVE/vulnerability providers
-- provenance or attestation verification
-- production cache/offline/rate-limit policy
-- publication to Maven Central
+CI runs the regular build and Invoker test on Java 17 and 21. The live smoke test has its own workflow because Maven Central and the OpenSSF API are external dependencies, not hermetic build inputs.
 
-Those are separate implementation slices behind the same `EvidenceCheck` boundary.
+## Project documentation
 
-## CI and compatibility
+- [Current capabilities and explicit limits](docs/current-capabilities.md)
+- [Architecture](docs/architecture.md)
+- [Roadmap](ROADMAP.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
-CI builds and runs the end-to-end demo on Java 17 and Java 21. Unit tests keep network semantics deterministic by injecting a probe rather than depending on live infrastructure; the demo supplies the live Maven Central integration path.
+## What this does not claim
+
+The plugin currently verifies public discoverability and selected project-health evidence. It does **not** yet claim SBOM schema/content validation, artifact-to-source provenance, universal SCM resolution, non-GitHub Scorecard targets, vulnerability-provider coverage, attestation verification, or production cache/offline policy.
+
+Those are intentional follow-on slices behind the evidence-provider boundary; see [ROADMAP.md](ROADMAP.md).
 
 ## Origin
 
-This repository was extracted from an Apache-2.0 engineering proof originally built in `mcc0nnell/scumm3` on 2026-08-24. The original proof caught and rejected a Java 17 compatibility mistake before accepting the corrected build.
+The repository was extracted from an Apache-2.0 engineering proof built in `mcc0nnell/scumm3` in August 2026. The standalone line then added real Maven repository SBOM discovery and live OpenSSF Scorecard verification.
 
-The first standalone release, `v0.1.0`, established the plugin boundary, deterministic evidence format, demo, CI, and release mechanics. `v0.2.0` added live Maven repository SBOM discovery. `v0.3.0` adds published-POM SCM resolution and live OpenSSF Scorecard retrieval.
+This project is independent of the Apache Software Foundation and of Maven Support & Care. Apache Maven is a trademark of the Apache Software Foundation.
 
 ## License
 

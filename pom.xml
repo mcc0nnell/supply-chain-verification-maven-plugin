@@ -3,13 +3,17 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <groupId>io.github.mcc0nnell</groupId>
   <artifactId>supply-chain-verification-maven-plugin</artifactId>
-  <version>0.3.0</version>
+  <version>0.4.0-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
+
   <name>Supply Chain Verification Maven Plugin</name>
-  <description>Runnable architecture spike for Maven Support &amp; Care issue 224.</description>
+  <description>Maven build-time verification of public supply-chain evidence for dependencies and build plugins.</description>
   <url>https://github.com/mcc0nnell/supply-chain-verification-maven-plugin</url>
+  <inceptionYear>2026</inceptionYear>
+
   <licenses>
     <license>
       <name>Apache License, Version 2.0</name>
@@ -17,34 +21,194 @@
       <distribution>repo</distribution>
     </license>
   </licenses>
+
+  <developers>
+    <developer>
+      <id>mcc0nnell</id>
+      <name>Robert McConnell</name>
+      <email>robert@mcc0nnell.org</email>
+      <url>https://github.com/mcc0nnell</url>
+      <roles>
+        <role>Maintainer</role>
+      </roles>
+    </developer>
+  </developers>
+
   <scm>
     <connection>scm:git:https://github.com/mcc0nnell/supply-chain-verification-maven-plugin.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/mcc0nnell/supply-chain-verification-maven-plugin.git</developerConnection>
     <url>https://github.com/mcc0nnell/supply-chain-verification-maven-plugin</url>
+    <tag>HEAD</tag>
   </scm>
+
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/mcc0nnell/supply-chain-verification-maven-plugin/issues</url>
+  </issueManagement>
+
+  <ciManagement>
+    <system>GitHub Actions</system>
+    <url>https://github.com/mcc0nnell/supply-chain-verification-maven-plugin/actions</url>
+  </ciManagement>
+
+  <prerequisites>
+    <maven>3.9.0</maven>
+  </prerequisites>
+
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <project.build.outputTimestamp>2026-09-18T10:01:09Z</project.build.outputTimestamp>
+
     <maven.version>3.9.9</maven.version>
-    <plugin.tools.version>3.15.1</plugin.tools.version>
+    <plugin.tools.version>3.15.2</plugin.tools.version>
     <junit.version>5.11.4</junit.version>
+
+    <compiler.plugin.version>3.15.0</compiler.plugin.version>
+    <enforcer.plugin.version>3.6.3</enforcer.plugin.version>
+    <invoker.plugin.version>3.10.1</invoker.plugin.version>
+    <site.plugin.version>3.22.0</site.plugin.version>
+    <surefire.plugin.version>3.5.5</surefire.plugin.version>
+    <plugin.report.version>3.15.2</plugin.report.version>
+    <project.info.report.version>3.9.0</project.info.report.version>
   </properties>
+
   <dependencies>
-    <dependency><groupId>org.apache.maven</groupId><artifactId>maven-plugin-api</artifactId><version>${maven.version}</version><scope>provided</scope></dependency>
-    <dependency><groupId>org.apache.maven</groupId><artifactId>maven-core</artifactId><version>${maven.version}</version><scope>provided</scope></dependency>
-    <dependency><groupId>org.apache.maven.plugin-tools</groupId><artifactId>maven-plugin-annotations</artifactId><version>${plugin.tools.version}</version><scope>provided</scope></dependency>
-    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>${junit.version}</version><scope>test</scope></dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-plugin-api</artifactId>
+      <version>${maven.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+      <version>${maven.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.plugin-tools</groupId>
+      <artifactId>maven-plugin-annotations</artifactId>
+      <version>${plugin.tools.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
+
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-site-plugin</artifactId>
+          <version>${site.plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
     <plugins>
-      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version></plugin>
-      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.2</version></plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${enforcer.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-build-environment</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireMavenVersion>
+                  <version>[3.9.0,)</version>
+                </requireMavenVersion>
+                <requireJavaVersion>
+                  <version>[17,)</version>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${compiler.plugin.version}</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.plugin.version}</version>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-plugin-plugin</artifactId>
         <version>${plugin.tools.version}</version>
-        <configuration><goalPrefix>supply-chain-verification</goalPrefix></configuration>
+        <configuration>
+          <goalPrefix>supply-chain-verification</goalPrefix>
+        </configuration>
+        <executions>
+          <execution>
+            <id>generate-help-goal</id>
+            <goals>
+              <goal>helpmojo</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>run-its</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-invoker-plugin</artifactId>
+            <version>${invoker.plugin.version}</version>
+            <configuration>
+              <projectsDirectory>${project.basedir}/src/it</projectsDirectory>
+              <cloneProjectsTo>${project.build.directory}/its</cloneProjectsTo>
+              <streamLogs>true</streamLogs>
+            </configuration>
+            <executions>
+              <execution>
+                <id>integration-tests</id>
+                <goals>
+                  <goal>install</goal>
+                  <goal>run</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+  <reporting>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-plugin-report-plugin</artifactId>
+        <version>${plugin.report.version}</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-project-info-reports-plugin</artifactId>
+        <version>${project.info.report.version}</version>
+      </plugin>
+    </plugins>
+  </reporting>
 </project>
