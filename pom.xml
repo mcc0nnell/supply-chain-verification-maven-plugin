@@ -8,7 +8,7 @@
   <version>0.1.0</version>
   <packaging>maven-plugin</packaging>
   <name>Supply Chain Verification Maven Plugin</name>
-  <description>Runnable architecture spike for Maven Support & Care issue 224.</description>
+  <description>Runnable architecture spike for Maven Support &amp; Care issue 224.</description>
   <url>https://github.com/mcc0nnell/supply-chain-verification-maven-plugin</url>
   <licenses>
     <license>
