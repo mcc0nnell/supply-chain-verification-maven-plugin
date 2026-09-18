@@ -1,160 +1,210 @@
 package io.github.mcc0nnell.supplychain;
 
-import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactRequest;
+import org.eclipse.aether.resolution.ArtifactResolutionException;
+import org.eclipse.aether.resolution.ArtifactResult;
 
 final class SbomCheck implements EvidenceCheck {
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
-
-    private final URI repository;
     private final Probe probe;
 
-    SbomCheck(URI repository) {
-        this(repository, new HttpProbe(DEFAULT_TIMEOUT));
+    SbomCheck(RepositorySystem repositorySystem, RepositorySystemSession session) {
+        this(new MavenResolverProbe(repositorySystem, session));
     }
 
-    SbomCheck(URI repository, Duration timeout) {
-        this(repository, new HttpProbe(timeout));
-    }
-
-    SbomCheck(URI repository, Probe probe) {
-        this.repository = repository;
+    SbomCheck(Probe probe) {
         this.probe = probe;
     }
 
     @Override
     public String id() {
-        return "public-sbom";
+        return "public-sbom-sidecar";
     }
 
     @Override
-    public Evidence inspect(Coordinate component) {
+    public Evidence inspect(ResolvedComponent component) {
         if (component.groupId() == null || component.groupId().isBlank()
             || component.artifactId() == null || component.artifactId().isBlank()
             || component.version() == null || component.version().isBlank()) {
-            return new Evidence(
-                id(),
-                Evidence.Status.UNKNOWN,
-                "component coordinates are incomplete",
+            return unknown("component coordinates are incomplete", List.of());
+        }
+        if (component.artifactRepository() == null
+            || component.artifactRepositoryUri() == null) {
+            return unknown(
+                "resolved artifact repository is unavailable; SBOM lookup cannot be bound to the consumed artifact",
                 List.of());
         }
+        if (component.hasClassifier()) {
+            return unknown(
+                "SBOM sidecar convention is not defined for classified artifacts",
+                List.of(component.artifactRepositoryUri().toString()));
+        }
+        if (component.version().endsWith("-SNAPSHOT")) {
+            return unknown(
+                "SBOM sidecar convention is not defined for mutable SNAPSHOT coordinates",
+                List.of(component.artifactRepositoryUri().toString()));
+        }
 
-        List<String> candidates = candidates(component);
+        List<Sidecar> sidecars = sidecars(component);
         boolean uncertain = false;
 
-        for (String location : candidates) {
-            try {
-                ProbeResult result = probe.inspect(URI.create(location));
-                if (result.found()) {
-                    return new Evidence(
-                        id(),
-                        Evidence.Status.PASS,
-                        "public SBOM published",
-                        List.of(location));
-                }
-                if (!result.missing()) {
-                    uncertain = true;
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+        for (Sidecar sidecar : sidecars) {
+            ProbeResult result = probe.inspect(component, sidecar);
+            if (result.found()) {
                 return new Evidence(
                     id(),
-                    Evidence.Status.UNKNOWN,
-                    "SBOM lookup interrupted",
-                    candidates);
-            } catch (IOException | RuntimeException e) {
+                    Evidence.Status.PASS,
+                    "public SBOM sidecar resolved through Maven; content and artifact binding are not yet validated",
+                    List.of(sidecar.location()),
+                    Map.of(
+                        "claim", "sidecar-exists",
+                        "contentValidated", "false",
+                        "resolution", "maven-resolver"));
+            }
+            if (!result.missing()) {
                 uncertain = true;
             }
         }
 
+        List<String> locations = sidecars.stream().map(Sidecar::location).toList();
         if (uncertain) {
-            return new Evidence(
-                id(),
-                Evidence.Status.UNKNOWN,
-                "public SBOM lookup was not conclusive",
-                candidates);
+            return unknown("public SBOM sidecar lookup was not conclusive", locations);
         }
 
         return new Evidence(
             id(),
             Evidence.Status.FAIL,
-            "no public SBOM found at known Maven repository locations",
-            candidates);
+            "no public SBOM sidecar resolved at known locations in the artifact's Maven repository",
+            locations,
+            Map.of(
+                "claim", "sidecar-exists",
+                "contentValidated", "false",
+                "resolution", "maven-resolver"));
     }
 
-    List<String> candidates(Coordinate component) {
-        String stem = repository.toString().replaceAll("/+$", "") + "/"
+    List<Sidecar> sidecars(ResolvedComponent component) {
+        String stem = component.artifactRepositoryUri().toString().replaceAll("/+$", "") + "/"
             + component.groupId().replace('.', '/') + "/"
             + component.artifactId() + "/"
             + component.version() + "/"
             + component.artifactId() + "-" + component.version();
 
-        List<String> candidates = new ArrayList<>(3);
-        candidates.add(stem + "-cyclonedx.json");
-        candidates.add(stem + "-cyclonedx.xml");
-        candidates.add(stem + ".spdx.json");
+        List<Sidecar> candidates = new ArrayList<>(3);
+        candidates.add(new Sidecar(
+            "cyclonedx",
+            "json",
+            stem + "-cyclonedx.json"));
+        candidates.add(new Sidecar(
+            "cyclonedx",
+            "xml",
+            stem + "-cyclonedx.xml"));
+        candidates.add(new Sidecar(
+            "",
+            "spdx.json",
+            stem + ".spdx.json"));
         return List.copyOf(candidates);
     }
 
-    @FunctionalInterface
-    interface Probe {
-        ProbeResult inspect(URI uri) throws IOException, InterruptedException;
+    private Evidence unknown(String summary, List<String> locations) {
+        return new Evidence(
+            id(),
+            Evidence.Status.UNKNOWN,
+            summary,
+            locations,
+            Map.of(
+                "claim", "sidecar-exists",
+                "contentValidated", "false",
+                "resolution", "maven-resolver"));
     }
 
-    record ProbeResult(int statusCode) {
+    record Sidecar(String classifier, String extension, String location) {}
+
+    @FunctionalInterface
+    interface Probe {
+        ProbeResult inspect(ResolvedComponent component, Sidecar sidecar);
+    }
+
+    record ProbeResult(State state) {
+        enum State { FOUND, MISSING, UNKNOWN }
+
+        static ProbeResult foundResult() {
+            return new ProbeResult(State.FOUND);
+        }
+
+        static ProbeResult missingResult() {
+            return new ProbeResult(State.MISSING);
+        }
+
+        static ProbeResult unknownResult() {
+            return new ProbeResult(State.UNKNOWN);
+        }
+
         boolean found() {
-            return statusCode >= 200 && statusCode < 300;
+            return state == State.FOUND;
         }
 
         boolean missing() {
-            return statusCode == 404 || statusCode == 410;
+            return state == State.MISSING;
         }
     }
 
-    private static final class HttpProbe implements Probe {
-        private final HttpClient client;
-        private final Duration timeout;
+    private static final class MavenResolverProbe implements Probe {
+        private final RepositorySystem repositorySystem;
+        private final RepositorySystemSession session;
 
-        private HttpProbe(Duration timeout) {
-            if (timeout == null || timeout.isZero() || timeout.isNegative()) {
-                throw new IllegalArgumentException("request timeout must be positive");
-            }
-            this.timeout = timeout;
-            this.client = HttpClient.newBuilder()
-                .connectTimeout(timeout)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        private MavenResolverProbe(
+            RepositorySystem repositorySystem,
+            RepositorySystemSession session) {
+            this.repositorySystem = repositorySystem;
+            this.session = session;
         }
 
         @Override
-        public ProbeResult inspect(URI uri) throws IOException, InterruptedException {
-            HttpResponse<Void> response = client.send(
-                request(uri, "HEAD"),
-                HttpResponse.BodyHandlers.discarding());
-
-            if (response.statusCode() == 405 || response.statusCode() == 501) {
-                response = client.send(
-                    request(uri, "GET"),
-                    HttpResponse.BodyHandlers.discarding());
+        public ProbeResult inspect(ResolvedComponent component, Sidecar sidecar) {
+            RemoteRepository repository = component.artifactRepository();
+            if (repository == null) {
+                return ProbeResult.unknownResult();
             }
-            return new ProbeResult(response.statusCode());
-        }
 
-        private HttpRequest request(URI uri, String method) {
-            HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .timeout(timeout)
-                .header("User-Agent", "supply-chain-verification-maven-plugin/0.2")
-                .method(method, HttpRequest.BodyPublishers.noBody());
-            if ("GET".equals(method)) {
-                builder.header("Range", "bytes=0-0");
+            var artifact = new DefaultArtifact(
+                component.groupId(),
+                component.artifactId(),
+                sidecar.classifier(),
+                sidecar.extension(),
+                component.baseVersion() == null
+                    ? component.version()
+                    : component.baseVersion());
+
+            ArtifactRequest request = new ArtifactRequest(
+                artifact,
+                List.of(repository),
+                "supply-chain-verification");
+
+            try {
+                ArtifactResult result = repositorySystem.resolveArtifact(session, request);
+                return result.isResolved()
+                    ? ProbeResult.foundResult()
+                    : result.isMissing()
+                        ? ProbeResult.missingResult()
+                        : ProbeResult.unknownResult();
+            } catch (ArtifactResolutionException e) {
+                ArtifactResult result = e.getResult();
+                if (session.isOffline()) {
+                    return ProbeResult.unknownResult();
+                }
+                return result != null && result.isMissing()
+                    ? ProbeResult.missingResult()
+                    : ProbeResult.unknownResult();
+            } catch (RuntimeException e) {
+                return ProbeResult.unknownResult();
             }
-            return builder.build();
         }
     }
 }

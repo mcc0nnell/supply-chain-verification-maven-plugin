@@ -1,48 +1,59 @@
 # Current Capabilities
 
-This document is the authoritative “what works now” boundary for the development line.
+This document is the authoritative “what works now” boundary for the 0.4 development line.
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Enumerate resolved Maven dependencies | Supported | Uses the current Maven project |
-| Enumerate build plugins | Supported | Reported as a distinct component kind |
-| CycloneDX JSON publication discovery | Supported | Conventional Maven repository location |
-| CycloneDX XML publication discovery | Supported | Conventional Maven repository location |
-| SPDX JSON publication discovery | Supported | Conventional Maven repository location |
-| Published-POM SCM lookup | Supported | Used by Scorecard resolution |
+| Enumerate resolved Maven dependencies | Supported | Includes transitive dependencies visible to the project |
+| Enumerate resolved build-plugin artifacts | Supported | Uses Maven's resolved plugin artifacts |
+| Capture artifact type/classifier/extension | Supported | Preserved in report identity |
+| Capture artifact SHA-256 | Supported | Hashes the file Maven resolved |
+| Capture POM SHA-256 | Supported | Hashes the cached Maven POM when available |
+| Artifact repository provenance | Supported | Maven Resolver local-repository provenance |
+| POM repository provenance | Supported | Independently recorded |
+| Detect artifact/POM repository mismatch | Supported | Scorecard/SCM fails closed to UNKNOWN |
+| CycloneDX JSON sidecar discovery | Supported | Maven Resolver, consumed artifact's repository |
+| CycloneDX XML sidecar discovery | Supported | Maven Resolver, consumed artifact's repository |
+| SPDX JSON sidecar discovery | Supported | Maven Resolver, consumed artifact's repository |
+| Maven mirror/auth/proxy/offline behavior for sidecars | Supported | Delegated to Maven Resolver |
+| Cached-POM SCM lookup | Supported | No independent POM download |
 | Parent-POM SCM inheritance | Supported | Bounded inheritance path |
 | Direct public GitHub SCM normalization | Supported | Scorecard target |
 | Apache GitBox to GitHub mirror normalization | Supported | Scorecard target |
-| OpenSSF Scorecard lookup | Supported | Public API |
-| Minimum Scorecard score policy | Supported | Negative value disables threshold |
-| Deterministic NDJSON report | Supported | Stable component/check order |
+| Current OpenSSF Scorecard lookup | Supported | Repository posture, not version provenance |
+| Scorecard repo/date/commit capture | Supported | Stored as evidence attributes |
+| Minimum current Scorecard score policy | Supported | Negative value disables threshold |
+| Schema-versioned NDJSON | Supported | JSON serializer, stable field/order strategy |
 | Concurrent evidence checks | Supported | Bounded by `parallelism` |
 | Fail build on conclusive `FAIL` | Supported | Opt-in |
 | Fail build on `UNKNOWN` | Supported | Opt-in |
-| Skip execution | Supported in 0.4 dev | `supplyChainVerification.skip` |
-| Custom report path | Supported in 0.4 dev | CLI/property configurable |
-| SBOM schema validation | Not yet | Discovery is not content validation |
+| Skip execution | Supported | `supplyChainVerification.skip` |
+| Custom report path | Supported | CLI/property configurable |
+| SBOM schema/content validation | Not yet | Sidecar resolution is not content validation |
 | Artifact-to-SBOM cryptographic binding | Not yet | No provenance claim |
-| Vulnerability/CVE provider | Not yet | Deliberately separate from current checks |
+| Artifact-version-to-source commit binding | Not yet | Scorecard is current repo posture |
+| Vulnerability/CVE provider | Not yet | Deliberately not added on the old identity boundary |
 | Attestation/provenance verification | Not yet | Roadmap |
-| Non-GitHub Scorecard targets | Not yet | Current resolver targets GitHub-backed Scorecard identities |
-| Persistent cache/offline mode | Not yet | Roadmap |
+| Non-GitHub Scorecard targets | Not yet | Current resolver targets GitHub-backed identities |
+| Persistent cross-build evidence cache | Not yet | Roadmap |
 | Public third-party provider SPI | Not yet | Internal boundary may still change |
-| Maven Central publication of this plugin | Not yet | Source builds/install locally today |
+| Maven Central publication of this plugin | Not yet | Build/install locally today |
 
 ## Evidence semantics
 
 ### PASS
 
-The provider positively verified the requested evidence.
+The provider positively established the narrow claim named by that check.
+
+For example, `public-sbom-sidecar: PASS` means a conventional sidecar resolved through Maven. It does not imply valid SBOM content or artifact binding.
 
 ### FAIL
 
-The provider obtained enough information to establish a negative answer, such as exhausting known SBOM locations with `404`/`410`, or receiving no published Scorecard result for a resolved repository.
+The provider obtained enough information to establish a negative answer for the narrow claim.
 
 ### UNKNOWN
 
-The evidence channel could not establish the answer. Examples include incomplete coordinates, ambiguous SCM metadata, timeouts, transient HTTP failures, and malformed remote responses.
+The provider could not safely establish the answer. Examples include incomplete identity, artifact/POM provenance disagreement, offline remote Scorecard lookup, malformed or mismatched remote responses, and unsupported metadata.
 
 ### WARN
 

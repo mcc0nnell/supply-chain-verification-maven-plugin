@@ -64,8 +64,11 @@
     <maven.version>3.9.9</maven.version>
     <plugin.tools.version>3.15.2</plugin.tools.version>
     <junit.version>5.11.4</junit.version>
+    <jackson.version>2.22.2</jackson.version>
 
     <compiler.plugin.version>3.15.0</compiler.plugin.version>
+    <resources.plugin.version>3.3.1</resources.plugin.version>
+    <jar.plugin.version>3.4.1</jar.plugin.version>
     <enforcer.plugin.version>3.6.3</enforcer.plugin.version>
     <invoker.plugin.version>3.10.1</invoker.plugin.version>
     <site.plugin.version>3.22.0</site.plugin.version>
@@ -92,6 +95,11 @@
       <artifactId>maven-plugin-annotations</artifactId>
       <version>${plugin.tools.version}</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+      <version>${jackson.version}</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -141,6 +149,18 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${compiler.plugin.version}</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>${resources.plugin.version}</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${jar.plugin.version}</version>
       </plugin>
 
       <plugin>
