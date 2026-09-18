@@ -1,6 +1,6 @@
 # Supply Chain Verification Maven Plugin
 
-This Maven plugin verifies public supply-chain evidence for project dependencies and build plugins and emits deterministic NDJSON suitable for review or policy enforcement.
+This Maven plugin records and checks supply-chain evidence for project dependencies and build plugins and emits deterministic NDJSON suitable for review or policy enforcement.
 
 The released `0.3.0` line includes public SBOM discovery and OpenSSF Scorecard verification. The `0.4.0-SNAPSHOT` development line adds project hardening, generated plugin documentation, and Maven Invoker integration testing.
 

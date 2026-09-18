@@ -9,7 +9,7 @@ def rows = report.readLines("UTF-8").findAll { !it.isBlank() }.collect {
 
 def fixture = rows.find {
     it.component.gav == "org.example:evidence-fixture:1.0.0" &&
-        it.check == "public-sbom-sidecar"
+        it.check == "sbom-sidecar-available"
 }
 assert fixture != null
 assert fixture.status == "PASS"
@@ -26,7 +26,7 @@ assert !fixture.locations[0].contains("repo.maven.apache.org")
 
 def absent = rows.find {
     it.component.gav == "org.example:no-sidecar:1.0.0" &&
-        it.check == "public-sbom-sidecar"
+        it.check == "sbom-sidecar-available"
 }
 assert absent != null
 assert absent.status == "FAIL"
@@ -36,9 +36,24 @@ assert absent.locations.every { it.startsWith("file:") }
 assert absent.locations.every { !it.contains("repo.maven.apache.org") }
 
 
+
+
+def buildPlugin = rows.find {
+    it.component.gav == "org.apache.maven.plugins:maven-antrun-plugin:3.1.0" &&
+        it.check == "sbom-sidecar-available"
+}
+assert buildPlugin != null
+assert buildPlugin.component.kind == "BUILD_PLUGIN"
+assert buildPlugin.component.type == "maven-plugin"
+assert buildPlugin.component.artifactRepositoryId == "central"
+assert buildPlugin.component.pomRepositoryId == "central"
+assert buildPlugin.component.sha256 != null
+assert buildPlugin.component.pomSha256 != null
+assert buildPlugin.attributes.visibility == "repository-context"
+
 def splitSbom = rows.find {
     it.component.gav == "org.example:split-provenance:1.0.0" &&
-        it.check == "public-sbom-sidecar"
+        it.check == "sbom-sidecar-available"
 }
 assert splitSbom != null
 assert splitSbom.component.artifactRepositoryId == "fixture-jar-repository"

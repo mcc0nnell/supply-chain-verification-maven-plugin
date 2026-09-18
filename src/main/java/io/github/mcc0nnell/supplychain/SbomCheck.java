@@ -25,7 +25,7 @@ final class SbomCheck implements EvidenceCheck {
 
     @Override
     public String id() {
-        return "public-sbom-sidecar";
+        return "sbom-sidecar-available";
     }
 
     @Override
@@ -61,10 +61,12 @@ final class SbomCheck implements EvidenceCheck {
                 return new Evidence(
                     id(),
                     Evidence.Status.PASS,
-                    "public SBOM sidecar resolved through Maven; content and artifact binding are not yet validated",
+                    "SBOM sidecar available through Maven repository context; content and artifact binding are not yet validated",
                     List.of(sidecar.location()),
                     Map.of(
-                        "claim", "sidecar-exists",
+                        "claim", "sidecar-available",
+                        "visibility", "repository-context",
+                        "artifactBound", "false",
                         "contentValidated", "false",
                         "resolution", "maven-resolver"));
             }
@@ -75,16 +77,18 @@ final class SbomCheck implements EvidenceCheck {
 
         List<String> locations = sidecars.stream().map(Sidecar::location).toList();
         if (uncertain) {
-            return unknown("public SBOM sidecar lookup was not conclusive", locations);
+            return unknown("SBOM sidecar availability lookup was not conclusive", locations);
         }
 
         return new Evidence(
             id(),
             Evidence.Status.FAIL,
-            "no public SBOM sidecar resolved at known locations in the artifact's Maven repository",
+            "no SBOM sidecar available at known locations in the artifact's Maven repository context",
             locations,
             Map.of(
-                "claim", "sidecar-exists",
+                "claim", "sidecar-available",
+                "visibility", "repository-context",
+                "artifactBound", "false",
                 "contentValidated", "false",
                 "resolution", "maven-resolver"));
     }
@@ -119,7 +123,9 @@ final class SbomCheck implements EvidenceCheck {
             summary,
             locations,
             Map.of(
-                "claim", "sidecar-exists",
+                "claim", "sidecar-available",
+                "visibility", "repository-context",
+                "artifactBound", "false",
                 "contentValidated", "false",
                 "resolution", "maven-resolver"));
     }

@@ -22,6 +22,7 @@ Highest-value funded follow-on work:
 
 - parse and validate retrieved CycloneDX/SPDX documents;
 - compare SBOM metadata/component identity to the resolved Maven component;
+- add a separate public-visibility observation instead of inferring publicness from repository access;
 - define artifact-digest binding where the SBOM publication format carries usable hashes;
 - consume provenance/attestations where a standard Maven publication path exists;
 - improve artifact-version-to-source-commit association before making historical source-health claims.

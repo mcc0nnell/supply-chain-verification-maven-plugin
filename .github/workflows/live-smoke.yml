@@ -35,11 +35,14 @@ jobs:
           sbom = next(
               row for row in rows
               if row["component"]["gav"] == "org.apache.commons:commons-lang3:3.17.0"
-              and row["check"] == "public-sbom-sidecar"
+              and row["check"] == "sbom-sidecar-available"
           )
           assert sbom["status"] == "PASS", sbom
           assert sbom["component"]["artifactRepositoryId"] == "central", sbom
           assert sbom["component"]["sha256"], sbom
+          assert sbom["attributes"]["claim"] == "sidecar-available", sbom
+          assert sbom["attributes"]["visibility"] == "repository-context", sbom
+          assert sbom["attributes"]["artifactBound"] == "false", sbom
           assert sbom["attributes"]["contentValidated"] == "false", sbom
           assert any("commons-lang3-3.17.0-cyclonedx.json" in x for x in sbom["locations"])
 

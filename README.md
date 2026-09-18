@@ -36,7 +36,7 @@ A timeout, repository ambiguity, offline remote lookup, or artifact/POM provenan
 
 ## Current checks
 
-### `public-sbom-sidecar`
+### `sbom-sidecar-available`
 
 Uses Maven Resolver to look for three conventional sidecar artifacts in the **same repository Maven resolved the consumed artifact from**:
 
@@ -44,9 +44,9 @@ Uses Maven Resolver to look for three conventional sidecar artifacts in the **sa
 - CycloneDX XML: classifier `cyclonedx`, extension `xml`
 - SPDX JSON: extension `spdx.json`
 
-A resolved sidecar is `PASS` for the narrow claim **sidecar exists**.
+A resolved sidecar is `PASS` for the narrow claim **sidecar is available in the build's Maven repository context**.
 
-It does **not** yet mean the SBOM is valid, describes the consumed artifact, or is cryptographically bound to the artifact. Those are follow-on checks.
+It does **not** establish that the sidecar is publicly reachable outside that repository context, nor that the SBOM is valid, describes the consumed artifact, or is cryptographically bound to it. Those are separate follow-on checks.
 
 ### `openssf-scorecard-current`
 
@@ -102,7 +102,7 @@ target/supply-chain-verification.ndjson
 A 0.4 observation contains component identity and evidence separately:
 
 ```json
-{"schemaVersion":1,"component":{"gav":"org.apache.commons:commons-lang3:3.17.0","type":"jar","classifier":null,"kind":"DEPENDENCY","artifactRepositoryId":"central","artifactRepositoryUrl":"https://repo.maven.apache.org/maven2","sha256":"..."},"check":"public-sbom-sidecar","status":"PASS","summary":"public SBOM sidecar resolved through Maven; content and artifact binding are not yet validated","attributes":{"claim":"sidecar-exists","contentValidated":"false","resolution":"maven-resolver"},"locations":["https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0-cyclonedx.json"]}
+{"schemaVersion":1,"component":{"gav":"org.apache.commons:commons-lang3:3.17.0","type":"jar","classifier":null,"kind":"DEPENDENCY","artifactRepositoryId":"central","artifactRepositoryUrl":"https://repo.maven.apache.org/maven2","sha256":"..."},"check":"sbom-sidecar-available","status":"PASS","summary":"SBOM sidecar available through Maven repository context; content and artifact binding are not yet validated","attributes":{"artifactBound":"false","claim":"sidecar-available","contentValidated":"false","resolution":"maven-resolver","visibility":"repository-context"},"locations":["https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0-cyclonedx.json"]}
 ```
 
 ## Configuration
@@ -141,6 +141,7 @@ CI exercises Java 17 and 21. Live external-service validation remains separate f
 
 - [Current capabilities and explicit limits](docs/current-capabilities.md)
 - [Architecture](docs/architecture.md)
+- [Maven Support & Care #224 mapping](docs/support-and-care-224.md)
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)

@@ -26,10 +26,11 @@ The format is inspired by Keep a Changelog and the project follows semantic vers
 ### Changed
 
 - Development version advances to `0.4.0-SNAPSHOT`.
-- `public-sbom` becomes `public-sbom-sidecar` and now means only that a conventional sidecar resolved through Maven.
+- `public-sbom` becomes `sbom-sidecar-available` and now means repository-context availability only; it does not claim public visibility.
 - `openssf-scorecard` becomes `openssf-scorecard-current` and explicitly means current repository posture, not artifact-version provenance.
 - Repository selection now follows Maven Resolver; the old independent `repositoryUrl` path is removed from the 0.4 development line.
 - Published POM re-downloads are replaced by the POM Maven already cached for the build.
+- Build-plugin SHA-256 falls back to Maven Resolver's local artifact file when legacy Maven `Artifact.getFile()` is unset.
 - Project metadata now describes the plugin as a maintained Maven component rather than an architecture spike.
 - Report-directory creation now also supports a report path without a parent directory.
 

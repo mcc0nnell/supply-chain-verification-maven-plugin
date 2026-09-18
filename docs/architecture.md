@@ -25,7 +25,7 @@ Maven Resolver provenance + local files
         +--------------------------+
         |                          |
         v                          v
-public-sbom-sidecar      openssf-scorecard-current
+sbom-sidecar-available      openssf-scorecard-current
 (Maven Resolver)          (local POM -> fixed API)
         |                          |
         +------------+-------------+
@@ -51,9 +51,9 @@ The corresponding cached POM is resolved independently through the same Resolver
 
 This matters because Maven can legally end up with a JAR and POM of the same GAV from different repositories. In that case the plugin must not silently apply the POM's SCM identity to the consumed JAR.
 
-## Public SBOM sidecar provider
+## SBOM sidecar availability provider
 
-`public-sbom-sidecar` uses Maven Resolver, not a parallel HTTP client.
+`sbom-sidecar-available` uses Maven Resolver, not a parallel HTTP client.
 
 For the repository Maven says supplied the artifact, it requests conventional Maven artifacts representing:
 
@@ -63,9 +63,9 @@ For the repository Maven says supplied the artifact, it requests conventional Ma
 
 This means mirrors, authentication, proxy configuration, checksum policy, local cache, and offline state are Maven concerns rather than reimplemented plugin concerns.
 
-The current claim is deliberately narrow: **a conventional sidecar artifact resolved**.
+The current claim is deliberately narrow: **a conventional sidecar artifact is available in the build's Maven repository context**.
 
-Content validation and artifact binding are separate roadmap work.
+The provider records `visibility=repository-context`; it does not infer public reachability from repository access. Public-visibility verification, content validation, and artifact binding are separate concerns.
 
 ## OpenSSF Scorecard provider
 
