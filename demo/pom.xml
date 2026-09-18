@@ -22,7 +22,7 @@
       <plugin>
         <groupId>io.github.mcc0nnell</groupId>
         <artifactId>supply-chain-verification-maven-plugin</artifactId>
-        <version>0.2.0</version>
+        <version>0.3.0</version>
         <executions>
           <execution><phase>verify</phase><goals><goal>verify</goal></goals></execution>
         </executions>

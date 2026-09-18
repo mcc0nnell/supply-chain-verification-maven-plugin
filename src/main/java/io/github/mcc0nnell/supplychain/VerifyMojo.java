@@ -41,6 +41,9 @@ public final class VerifyMojo extends AbstractMojo {
     @Parameter(property="supplyChainVerification.parallelism", defaultValue="8")
     int parallelism;
 
+    @Parameter(property="supplyChainVerification.minimumScorecardScore", defaultValue="-1")
+    double minimumScorecardScore;
+
     @Parameter(property="supplyChainVerification.failOnFailure", defaultValue="false")
     boolean failOnFailure;
 
@@ -59,12 +62,14 @@ public final class VerifyMojo extends AbstractMojo {
                     "supplyChainVerification.parallelism must be positive");
             }
 
+            URI repository = URI.create(repositoryUrl);
+            Duration timeout = Duration.ofSeconds(requestTimeoutSeconds);
+            ScmResolver resolver = new ScmResolver(repository, timeout);
+
             List<Coordinate> components = components();
             List<EvidenceCheck> checks = List.of(
-                new SbomCheck(
-                    URI.create(repositoryUrl),
-                    Duration.ofSeconds(requestTimeoutSeconds)),
-                new ScorecardCheck());
+                new SbomCheck(repository, timeout),
+                new ScorecardCheck(resolver, timeout, minimumScorecardScore));
 
             List<String> lines = new ArrayList<>();
             int passed = 0;

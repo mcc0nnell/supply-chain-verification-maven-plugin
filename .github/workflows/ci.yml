@@ -24,3 +24,5 @@ jobs:
           grep -q "\"check\":\"openssf-scorecard\"" demo/target/supply-chain-verification.ndjson
           grep -q '\"gav\":\"org.apache.commons:commons-lang3:3.17.0\".*\"check\":\"public-sbom\".*\"status\":\"PASS\"' demo/target/supply-chain-verification.ndjson
           grep -q 'commons-lang3-3.17.0-cyclonedx.json' demo/target/supply-chain-verification.ndjson
+          grep -q '\"gav\":\"org.apache.commons:commons-lang3:3.17.0\".*\"check\":\"openssf-scorecard\".*\"status\":\"PASS\"' demo/target/supply-chain-verification.ndjson
+          grep -q 'api.securityscorecards.dev/projects/github.com/apache/commons-lang' demo/target/supply-chain-verification.ndjson
