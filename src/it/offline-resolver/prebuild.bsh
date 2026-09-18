@@ -1,0 +1,48 @@
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.jar.JarOutputStream;
+
+File dir = new File(localRepositoryPath, "org/example/fixture/1.0");
+if (!dir.mkdirs() && !dir.isDirectory()) {
+    throw new IOException("Could not create fixture repository: " + dir);
+}
+
+String pom = "<project>"
+    + "<modelVersion>4.0.0</modelVersion>"
+    + "<groupId>org.example</groupId>"
+    + "<artifactId>fixture</artifactId>"
+    + "<version>1.0</version>"
+    + "<scm><url>https://github.com/example/fixture</url></scm>"
+    + "</project>";
+FileOutputStream pomOut =
+    new FileOutputStream(new File(dir, "fixture-1.0.pom"));
+pomOut.write(pom.getBytes(StandardCharsets.UTF_8));
+pomOut.close();
+
+JarOutputStream jar = new JarOutputStream(
+    new FileOutputStream(new File(dir, "fixture-1.0.jar")));
+jar.close();
+String sbom = "{"
+    + "\"bomFormat\":\"CycloneDX\","
+    + "\"specVersion\":\"1.5\","
+    + "\"version\":1,"
+    + "\"metadata\":{\"component\":{"
+    + "\"type\":\"library\","
+    + "\"group\":\"org.example\","
+    + "\"name\":\"fixture\","
+    + "\"version\":\"1.0\"}}}";
+FileOutputStream sbomOut =
+    new FileOutputStream(new File(dir, "fixture-1.0-cyclonedx.json"));
+sbomOut.write(sbom.getBytes(StandardCharsets.UTF_8));
+sbomOut.close();
+
+String tracking = "fixture-1.0.pom>=\n"
+    + "fixture-1.0.jar>=\n"
+    + "fixture-1.0-cyclonedx.json>=\n";
+FileOutputStream trackingOut =
+    new FileOutputStream(new File(dir, "_remote.repositories"));
+trackingOut.write(tracking.getBytes(StandardCharsets.UTF_8));
+trackingOut.close();
+
+return true;

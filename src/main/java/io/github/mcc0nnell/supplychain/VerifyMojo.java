@@ -1,7 +1,6 @@
 package io.github.mcc0nnell.supplychain;
 
 import java.io.File;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
@@ -16,11 +15,14 @@ import org.apache.maven.model.Plugin;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
 
 @Mojo(name="verify", defaultPhase=LifecyclePhase.VERIFY, threadSafe=true,
     requiresDependencyResolution=ResolutionScope.TEST)
@@ -31,9 +33,11 @@ public final class VerifyMojo extends AbstractMojo {
     @Parameter(defaultValue="${project.build.directory}/supply-chain-verification.ndjson")
     File reportFile;
 
-    @Parameter(property="supplyChainVerification.repositoryUrl",
-        defaultValue="https://repo.maven.apache.org/maven2")
-    String repositoryUrl;
+    @Component
+    RepositorySystem repositorySystem;
+
+    @Parameter(defaultValue="${repositorySystemSession}", readonly=true, required=true)
+    RepositorySystemSession repositorySystemSession;
 
     @Parameter(property="supplyChainVerification.requestTimeoutSeconds", defaultValue="5")
     int requestTimeoutSeconds;
@@ -62,14 +66,24 @@ public final class VerifyMojo extends AbstractMojo {
                     "supplyChainVerification.parallelism must be positive");
             }
 
-            URI repository = URI.create(repositoryUrl);
             Duration timeout = Duration.ofSeconds(requestTimeoutSeconds);
-            ScmResolver resolver = new ScmResolver(repository, timeout);
+            MavenEvidenceResolver mavenResolver = new MavenEvidenceResolver(
+                repositorySystem,
+                repositorySystemSession,
+                project.getRemoteProjectRepositories(),
+                project.getRemotePluginRepositories());
+            ScmResolver scmResolver = new ScmResolver(mavenResolver);
 
-            List<Coordinate> components = components();
+            List<Coordinate> components = components().stream()
+                .map(mavenResolver::enrich)
+                .toList();
             List<EvidenceCheck> checks = List.of(
-                new SbomCheck(repository, timeout),
-                new ScorecardCheck(resolver, timeout, minimumScorecardScore));
+                new SbomCheck(mavenResolver),
+                new ScorecardCheck(
+                    scmResolver,
+                    timeout,
+                    minimumScorecardScore,
+                    mavenResolver.offline()));
 
             List<String> lines = new ArrayList<>();
             int passed = 0;
@@ -139,18 +153,25 @@ public final class VerifyMojo extends AbstractMojo {
     private List<Coordinate> components() {
         List<Coordinate> components = new ArrayList<>();
         for (Artifact artifact : project.getArtifacts()) {
+            String extension = artifact.getArtifactHandler() == null
+                ? artifact.getType()
+                : artifact.getArtifactHandler().getExtension();
             components.add(new Coordinate(
                 artifact.getGroupId(),
                 artifact.getArtifactId(),
                 artifact.getVersion(),
-                Coordinate.Kind.DEPENDENCY));
+                Coordinate.Kind.DEPENDENCY,
+                extension,
+                artifact.getClassifier()));
         }
         for (Plugin plugin : project.getBuildPlugins()) {
             components.add(new Coordinate(
                 plugin.getGroupId(),
                 plugin.getArtifactId(),
                 plugin.getVersion(),
-                Coordinate.Kind.BUILD_PLUGIN));
+                Coordinate.Kind.BUILD_PLUGIN,
+                "jar",
+                ""));
         }
         components.sort(
             Comparator.comparing(Coordinate::gav)
@@ -176,12 +197,26 @@ public final class VerifyMojo extends AbstractMojo {
     private record Observation(Coordinate component, Evidence evidence) {}
 
     private static String toJson(Coordinate component, Evidence evidence) {
-        return "{\"gav\":\"" + esc(component.gav())
+        return "{\"schemaVersion\":1"
+            + ",\"coordinates\":\"" + esc(component.displayCoordinates())
+            + "\",\"gav\":\"" + esc(component.gav())
             + "\",\"kind\":\"" + component.kind()
-            + "\",\"check\":\"" + esc(evidence.check())
+            + "\",\"artifact\":" + resolvedArtifactJson(component.artifact())
+            + ",\"pom\":" + resolvedArtifactJson(component.pom())
+            + ",\"check\":\"" + esc(evidence.check())
             + "\",\"status\":\"" + evidence.status()
             + "\",\"summary\":\"" + esc(evidence.summary())
             + "\",\"locations\":" + jsonArray(evidence.locations()) + "}";
+    }
+
+    private static String resolvedArtifactJson(ResolvedArtifact artifact) {
+        if (artifact == null) {
+            return "null";
+        }
+        return "{\"state\":\"" + artifact.state()
+            + "\",\"repositoryId\":\"" + esc(artifact.repositoryId())
+            + "\",\"sha256\":\"" + esc(artifact.sha256())
+            + "\",\"summary\":\"" + esc(artifact.summary()) + "\"}";
     }
 
     static String jsonArray(List<String> values) {
@@ -196,8 +231,30 @@ public final class VerifyMojo extends AbstractMojo {
     }
 
     static String esc(String value) {
-        return value == null
-            ? ""
-            : value.replace("\\", "\\\\").replace("\"", "\\\"");
+        if (value == null) {
+            return "";
+        }
+
+        var out = new StringBuilder(value.length() + 16);
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            switch (ch) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\b' -> out.append("\\b");
+                case '\f' -> out.append("\\f");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (ch < 0x20) {
+                        out.append(String.format("\\u%04x", (int) ch));
+                    } else {
+                        out.append(ch);
+                    }
+                }
+            }
+        }
+        return out.toString();
     }
 }

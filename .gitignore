@@ -3,3 +3,4 @@ demo/target/
 .idea/
 .vscode/
 *.iml
+.demo-m2/

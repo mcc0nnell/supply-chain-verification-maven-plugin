@@ -1,0 +1,53 @@
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+
+File report = new File(basedir, "target/supply-chain-verification.ndjson");
+if (!report.isFile()) {
+    throw new FileNotFoundException("Missing evidence report: " + report);
+}
+
+String data = new String(
+    Files.readAllBytes(report.toPath()),
+    StandardCharsets.UTF_8);
+String[] lines = data.split("\\R");
+
+boolean sbomPass = false;
+boolean scorecardOffline = false;
+boolean resolvedBytes = false;
+
+for (String line : lines) {
+    boolean fixture = line.contains("\"gav\":\"org.example:fixture:1.0\"");
+    if (fixture
+        && line.contains("\"check\":\"public-sbom\"")
+        && line.contains("\"status\":\"PASS\"")) {
+        sbomPass = true;
+    }
+    if (fixture
+        && line.contains("\"check\":\"openssf-scorecard\"")
+        && line.contains(
+            "\"summary\":\"OpenSSF Scorecard lookup skipped because Maven is offline\"")) {
+        scorecardOffline = true;
+    }
+    if (fixture
+        && line.contains("\"artifact\":{\"state\":\"FOUND\"")
+        && line.contains("\"pom\":{\"state\":\"FOUND\"")
+        && line.contains("\"sha256\":\"")) {
+        resolvedBytes = true;
+    }
+}
+
+if (!sbomPass) {
+    throw new IllegalStateException(
+        "Seeded CycloneDX sidecar did not PASS offline");
+}
+if (!scorecardOffline) {
+    throw new IllegalStateException(
+        "Scorecard did not stay UNKNOWN without network access");
+}
+if (!resolvedBytes) {
+    throw new IllegalStateException(
+        "Resolved artifact/POM provenance was not recorded");
+}
+
+return true;

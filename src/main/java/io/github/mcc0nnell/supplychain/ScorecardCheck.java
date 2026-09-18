@@ -23,15 +23,33 @@ final class ScorecardCheck implements EvidenceCheck {
     private final ScmResolver resolver;
     private final Fetcher fetcher;
     private final double minimumScore;
+    private final boolean offline;
 
     ScorecardCheck(ScmResolver resolver, Duration timeout, double minimumScore) {
-        this(resolver, new HttpFetcher(timeout), minimumScore);
+        this(resolver, new HttpFetcher(timeout), minimumScore, false);
+    }
+
+    ScorecardCheck(
+        ScmResolver resolver,
+        Duration timeout,
+        double minimumScore,
+        boolean offline) {
+        this(resolver, new HttpFetcher(timeout), minimumScore, offline);
     }
 
     ScorecardCheck(ScmResolver resolver, Fetcher fetcher, double minimumScore) {
+        this(resolver, fetcher, minimumScore, false);
+    }
+
+    ScorecardCheck(
+        ScmResolver resolver,
+        Fetcher fetcher,
+        double minimumScore,
+        boolean offline) {
         this.resolver = resolver;
         this.fetcher = fetcher;
         this.minimumScore = minimumScore;
+        this.offline = offline;
     }
 
     @Override
@@ -50,6 +68,14 @@ final class ScorecardCheck implements EvidenceCheck {
                 resolution.locations());
         }
 
+        if (offline) {
+            return new Evidence(
+                id(),
+                Evidence.Status.UNKNOWN,
+                "OpenSSF Scorecard lookup skipped because Maven is offline",
+                resolution.locations());
+        }
+
         URI endpoint = API.resolve(resolution.scorecardProject());
         List<String> locations = locations(resolution, endpoint);
 
@@ -59,7 +85,7 @@ final class ScorecardCheck implements EvidenceCheck {
                 return new Evidence(
                     id(),
                     Evidence.Status.FAIL,
-                    "OpenSSF Scorecard result is not published",
+                    "OpenSSF Scorecard result is not published for resolved source repository",
                     locations);
             }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -83,8 +109,9 @@ final class ScorecardCheck implements EvidenceCheck {
             double score = Double.parseDouble(scoreMatch.group(1));
             String date = match(DATE, body);
             String detail = date == null
-                ? "OpenSSF Scorecard " + format(score)
-                : "OpenSSF Scorecard " + format(score) + " (" + date + ")";
+                ? "repository-level OpenSSF Scorecard " + format(score)
+                : "repository-level OpenSSF Scorecard "
+                    + format(score) + " (" + date + ")";
 
             if (minimumScore >= 0 && score < minimumScore) {
                 return new Evidence(

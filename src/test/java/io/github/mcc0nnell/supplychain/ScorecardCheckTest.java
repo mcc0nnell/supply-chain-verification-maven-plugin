@@ -3,13 +3,11 @@ package io.github.mcc0nnell.supplychain;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class ScorecardCheckTest {
-    private static final URI REPOSITORY =
-        URI.create("https://repo.maven.apache.org/maven2");
     private static final byte[] POM = """
         <project>
           <modelVersion>4.0.0</modelVersion>
@@ -28,7 +26,7 @@ class ScorecardCheckTest {
         var evidence = check.inspect(component());
 
         assertEquals(Evidence.Status.PASS, evidence.status());
-        assertEquals("OpenSSF Scorecard 8.1 (2026-09-15T16:58:50Z)", evidence.summary());
+        assertEquals("repository-level OpenSSF Scorecard 8.1 (2026-09-15T16:58:50Z)", evidence.summary());
         assertTrue(evidence.locations().contains(
             "https://api.securityscorecards.dev/projects/github.com/apache/commons-lang"));
     }
@@ -43,7 +41,7 @@ class ScorecardCheckTest {
 
         assertEquals(Evidence.Status.FAIL, evidence.status());
         assertEquals(
-            "OpenSSF Scorecard 6.9 (2026-09-15) is below required minimum 7",
+            "repository-level OpenSSF Scorecard 6.9 (2026-09-15) is below required minimum 7",
             evidence.summary());
     }
 
@@ -54,7 +52,7 @@ class ScorecardCheckTest {
         var evidence = check.inspect(component());
 
         assertEquals(Evidence.Status.FAIL, evidence.status());
-        assertEquals("OpenSSF Scorecard result is not published", evidence.summary());
+        assertEquals("OpenSSF Scorecard result is not published for resolved source repository", evidence.summary());
     }
 
     @Test
@@ -79,19 +77,49 @@ class ScorecardCheckTest {
             evidence.summary());
     }
 
+    @Test
+    void offlineModeNeverCallsScorecardApi() {
+        var calls = new AtomicInteger();
+        var resolver = scmResolver();
+        var check = new ScorecardCheck(
+            resolver,
+            uri -> {
+                calls.incrementAndGet();
+                return new ScorecardCheck.FetchResult(
+                    200, "{\"score\":9.9}".getBytes(StandardCharsets.UTF_8));
+            },
+            -1,
+            true);
+
+        var evidence = check.inspect(component());
+
+        assertEquals(Evidence.Status.UNKNOWN, evidence.status());
+        assertEquals(0, calls.get());
+        assertEquals(
+            "OpenSSF Scorecard lookup skipped because Maven is offline",
+            evidence.summary());
+    }
+
     private static ScorecardCheck check(
         int status,
         String response,
         double minimumScore) {
 
-        var resolver = new ScmResolver(REPOSITORY, uri ->
-            new ScmResolver.FetchResult(200, POM));
         return new ScorecardCheck(
-            resolver,
+            scmResolver(),
             uri -> new ScorecardCheck.FetchResult(
                 status,
                 response.getBytes(StandardCharsets.UTF_8)),
             minimumScore);
+    }
+
+    private static ScmResolver scmResolver() {
+        return new ScmResolver(component ->
+            new ScmResolver.FetchResult(
+                ResolvedArtifact.State.FOUND,
+                POM,
+                "maven:fixture:sha256:abc",
+                "resolved"));
     }
 
     private static Coordinate component() {

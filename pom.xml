@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.mcc0nnell</groupId>
   <artifactId>supply-chain-verification-maven-plugin</artifactId>
-  <version>0.3.0</version>
+  <version>0.4.0-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
   <name>Supply Chain Verification Maven Plugin</name>
   <description>Runnable architecture spike for Maven Support &amp; Care issue 224.</description>
@@ -27,6 +27,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.version>3.9.9</maven.version>
     <plugin.tools.version>3.15.1</plugin.tools.version>
+    <invoker.version>3.10.1</invoker.version>
     <junit.version>5.11.4</junit.version>
   </properties>
   <dependencies>
@@ -44,6 +45,24 @@
         <artifactId>maven-plugin-plugin</artifactId>
         <version>${plugin.tools.version}</version>
         <configuration><goalPrefix>supply-chain-verification</goalPrefix></configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-invoker-plugin</artifactId>
+        <version>${invoker.version}</version>
+        <configuration>
+          <cloneProjectsTo>${project.build.directory}/it</cloneProjectsTo>
+          <localRepositoryPath>${project.build.directory}/it-repo</localRepositoryPath>
+          <preBuildHookScript>prebuild</preBuildHookScript>
+          <postBuildHookScript>verify</postBuildHookScript>
+          <goals><goal>-o</goal><goal>verify</goal></goals>
+        </configuration>
+        <executions>
+          <execution>
+            <id>integration-test</id>
+            <goals><goal>install</goal><goal>run</goal></goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
