@@ -4,6 +4,7 @@ import java.io.File;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,36 +23,70 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 
-@Mojo(name="verify", defaultPhase=LifecyclePhase.VERIFY, threadSafe=true,
-    requiresDependencyResolution=ResolutionScope.TEST)
+/**
+ * Verifies public supply-chain evidence for the current project's dependencies and build plugins.
+ *
+ * <p>The goal writes deterministic NDJSON observations and can optionally reject the build when
+ * conclusive failures or unresolved evidence are present.</p>
+ */
+@Mojo(
+    name = "verify",
+    defaultPhase = LifecyclePhase.VERIFY,
+    threadSafe = true,
+    requiresDependencyResolution = ResolutionScope.TEST)
 public final class VerifyMojo extends AbstractMojo {
-    @Parameter(defaultValue="${project}", readonly=true, required=true)
+    /** The Maven project being inspected. */
+    @Parameter(defaultValue = "${project}", readonly = true, required = true)
     MavenProject project;
 
-    @Parameter(defaultValue="${project.build.directory}/supply-chain-verification.ndjson")
+    /** Skip all supply-chain verification for this execution. */
+    @Parameter(property = "supplyChainVerification.skip", defaultValue = "false")
+    boolean skip;
+
+    /** Destination for the deterministic NDJSON evidence report. */
+    @Parameter(
+        property = "supplyChainVerification.reportFile",
+        defaultValue = "${project.build.directory}/supply-chain-verification.ndjson")
     File reportFile;
 
-    @Parameter(property="supplyChainVerification.repositoryUrl",
-        defaultValue="https://repo.maven.apache.org/maven2")
+    /** Maven repository base URL used for public SBOM and published-POM discovery. */
+    @Parameter(
+        property = "supplyChainVerification.repositoryUrl",
+        defaultValue = "https://repo.maven.apache.org/maven2")
     String repositoryUrl;
 
-    @Parameter(property="supplyChainVerification.requestTimeoutSeconds", defaultValue="5")
+    /** Connect/request timeout, in seconds, for remote evidence lookups. */
+    @Parameter(property = "supplyChainVerification.requestTimeoutSeconds", defaultValue = "5")
     int requestTimeoutSeconds;
 
-    @Parameter(property="supplyChainVerification.parallelism", defaultValue="8")
+    /** Maximum number of concurrent component/check observations. */
+    @Parameter(property = "supplyChainVerification.parallelism", defaultValue = "8")
     int parallelism;
 
-    @Parameter(property="supplyChainVerification.minimumScorecardScore", defaultValue="-1")
+    /**
+     * Optional minimum OpenSSF Scorecard score.
+     *
+     * <p>A negative value disables score-threshold enforcement while still requiring a published
+     * Scorecard result for a {@code PASS}.</p>
+     */
+    @Parameter(property = "supplyChainVerification.minimumScorecardScore", defaultValue = "-1")
     double minimumScorecardScore;
 
-    @Parameter(property="supplyChainVerification.failOnFailure", defaultValue="false")
+    /** Reject the Maven build when one or more checks conclusively return {@code FAIL}. */
+    @Parameter(property = "supplyChainVerification.failOnFailure", defaultValue = "false")
     boolean failOnFailure;
 
-    @Parameter(property="supplyChainVerification.failOnUnknown", defaultValue="false")
+    /** Reject the Maven build when one or more checks return {@code UNKNOWN}. */
+    @Parameter(property = "supplyChainVerification.failOnUnknown", defaultValue = "false")
     boolean failOnUnknown;
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        if (skip) {
+            getLog().info("Supply-chain verification is skipped.");
+            return;
+        }
+
         try {
             if (requestTimeoutSeconds <= 0) {
                 throw new MojoFailureException(
@@ -88,8 +123,13 @@ public final class VerifyMojo extends AbstractMojo {
                 lines.add(toJson(observation.component(), evidence));
             }
 
-            Files.createDirectories(reportFile.toPath().getParent());
-            Files.write(reportFile.toPath(), lines, StandardCharsets.UTF_8);
+            Path reportPath = reportFile.toPath();
+            Path parent = reportPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.write(reportPath, lines, StandardCharsets.UTF_8);
+
             getLog().info("components=" + components.size()
                 + " observations=" + lines.size()
                 + " pass=" + passed

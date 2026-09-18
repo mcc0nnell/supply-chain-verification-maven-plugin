@@ -1,9 +1,12 @@
 name: ci
+
 on:
   push:
   pull_request:
+
 permissions:
   contents: read
+
 jobs:
   verify:
     strategy:
@@ -17,12 +20,5 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: maven
-      - run: ./scripts/demo.sh
-      - run: |
-          test -s demo/target/supply-chain-verification.ndjson
-          grep -q "\"check\":\"public-sbom\"" demo/target/supply-chain-verification.ndjson
-          grep -q "\"check\":\"openssf-scorecard\"" demo/target/supply-chain-verification.ndjson
-          grep -q '\"gav\":\"org.apache.commons:commons-lang3:3.17.0\".*\"check\":\"public-sbom\".*\"status\":\"PASS\"' demo/target/supply-chain-verification.ndjson
-          grep -q 'commons-lang3-3.17.0-cyclonedx.json' demo/target/supply-chain-verification.ndjson
-          grep -q '\"gav\":\"org.apache.commons:commons-lang3:3.17.0\".*\"check\":\"openssf-scorecard\".*\"status\":\"PASS\"' demo/target/supply-chain-verification.ndjson
-          grep -q 'api.securityscorecards.dev/projects/github.com/apache/commons-lang' demo/target/supply-chain-verification.ndjson
+      - name: Unit and Maven Invoker verification
+        run: mvn -B -ntp -Prun-its verify
