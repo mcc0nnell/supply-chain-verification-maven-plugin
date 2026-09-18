@@ -39,7 +39,7 @@ import org.eclipse.aether.repository.LocalArtifactResult;
 import org.eclipse.aether.repository.RemoteRepository;
 
 /**
- * Verifies public supply-chain evidence for the artifacts Maven resolved for this build.
+ * Verifies supply-chain evidence for the artifacts Maven resolved for this build.
  *
  * <p>The goal writes deterministic NDJSON observations and can optionally reject the build when
  * conclusive failures or unresolved evidence are present.</p>
@@ -257,6 +257,9 @@ public final class VerifyMojo extends AbstractMojo {
         String artifactRepositoryId = artifactSource.repositoryId();
 
         File file = artifact.getFile();
+        if (file == null || !file.isFile()) {
+            file = artifactSource.file();
+        }
         String sha256 = file != null && file.isFile()
             ? sha256(file.toPath())
             : null;

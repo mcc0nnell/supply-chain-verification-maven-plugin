@@ -7,7 +7,7 @@ This document is the authoritative “what works now” boundary for the 0.4 dev
 | Enumerate resolved Maven dependencies | Supported | Includes transitive dependencies visible to the project |
 | Enumerate resolved build-plugin artifacts | Supported | Uses Maven's resolved plugin artifacts |
 | Capture artifact type/classifier/extension | Supported | Preserved in report identity |
-| Capture artifact SHA-256 | Supported | Hashes the file Maven resolved |
+| Capture artifact SHA-256 | Supported | Hashes the local file Maven/Resolver materialized, including executed build plugins |
 | Capture POM SHA-256 | Supported | Hashes the cached Maven POM when available |
 | Artifact repository provenance | Supported | Maven Resolver local-repository provenance |
 | POM repository provenance | Supported | Independently recorded |
@@ -15,6 +15,7 @@ This document is the authoritative “what works now” boundary for the 0.4 dev
 | CycloneDX JSON sidecar discovery | Supported | Maven Resolver, consumed artifact's repository |
 | CycloneDX XML sidecar discovery | Supported | Maven Resolver, consumed artifact's repository |
 | SPDX JSON sidecar discovery | Supported | Maven Resolver, consumed artifact's repository |
+| Public visibility of SBOM sidecar | Not yet | Repository-context availability does not prove unauthenticated public reachability |
 | Maven mirror/auth/proxy/offline behavior for sidecars | Supported | Delegated to Maven Resolver |
 | Cached-POM SCM lookup | Supported | No independent POM download |
 | Parent-POM SCM inheritance | Supported | Bounded inheritance path |
@@ -45,7 +46,7 @@ This document is the authoritative “what works now” boundary for the 0.4 dev
 
 The provider positively established the narrow claim named by that check.
 
-For example, `public-sbom-sidecar: PASS` means a conventional sidecar resolved through Maven. It does not imply valid SBOM content or artifact binding.
+For example, `sbom-sidecar-available: PASS` means a conventional sidecar is available in the build's Maven repository context. It does not establish public visibility outside that context, valid SBOM content, or artifact binding.
 
 ### FAIL
 

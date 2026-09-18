@@ -10,7 +10,7 @@
   <packaging>maven-plugin</packaging>
 
   <name>Supply Chain Verification Maven Plugin</name>
-  <description>Maven build-time verification of public supply-chain evidence for dependencies and build plugins.</description>
+  <description>Maven build-time evidence checks for dependencies and build plugins.</description>
   <url>https://github.com/mcc0nnell/supply-chain-verification-maven-plugin</url>
   <inceptionYear>2026</inceptionYear>
 

@@ -44,6 +44,21 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>plugin-identity-fixture</id>
+            <phase>validate</phase>
+            <goals><goal>run</goal></goals>
+            <configuration>
+              <target><echo>plugin identity fixture</echo></target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>io.github.mcc0nnell</groupId>
         <artifactId>supply-chain-verification-maven-plugin</artifactId>
         <version>@project.version@</version>

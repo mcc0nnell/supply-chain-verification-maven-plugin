@@ -11,7 +11,7 @@ class SbomCheckTest {
         URI.create("https://repo.maven.apache.org/maven2");
 
     @Test
-    void passesOnlyForSidecarExistenceAndSaysContentIsUnvalidated() {
+    void passesForRepositoryContextAvailabilityWithoutClaimingPublicVisibility() {
         var check = new SbomCheck((component, sidecar) ->
             sidecar.location().endsWith("-cyclonedx.json")
                 ? SbomCheck.ProbeResult.foundResult()
@@ -21,8 +21,11 @@ class SbomCheckTest {
 
         assertEquals(Evidence.Status.PASS, evidence.status());
         assertEquals(
-            "public SBOM sidecar resolved through Maven; content and artifact binding are not yet validated",
+            "SBOM sidecar available through Maven repository context; content and artifact binding are not yet validated",
             evidence.summary());
+        assertEquals("sidecar-available", evidence.attributes().get("claim"));
+        assertEquals("repository-context", evidence.attributes().get("visibility"));
+        assertEquals("false", evidence.attributes().get("artifactBound"));
         assertEquals("false", evidence.attributes().get("contentValidated"));
         assertEquals("maven-resolver", evidence.attributes().get("resolution"));
     }
