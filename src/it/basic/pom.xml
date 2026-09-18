@@ -10,6 +10,14 @@
 
   <repositories>
     <repository>
+      <id>fixture-pom-repository</id>
+      <url>file://${project.basedir}/repo-pom</url>
+    </repository>
+    <repository>
+      <id>fixture-jar-repository</id>
+      <url>file://${project.basedir}/repo-jar</url>
+    </repository>
+    <repository>
       <id>fixture-repository</id>
       <url>file://${project.basedir}/repo</url>
     </repository>
@@ -24,6 +32,11 @@
     <dependency>
       <groupId>org.example</groupId>
       <artifactId>no-sidecar</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.example</groupId>
+      <artifactId>split-provenance</artifactId>
       <version>1.0.0</version>
     </dependency>
   </dependencies>

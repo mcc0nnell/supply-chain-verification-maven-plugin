@@ -62,6 +62,7 @@
     <project.build.outputTimestamp>2026-09-18T10:01:09Z</project.build.outputTimestamp>
 
     <maven.version>3.9.9</maven.version>
+    <maven.resolver.version>1.9.22</maven.resolver.version>
     <plugin.tools.version>3.15.2</plugin.tools.version>
     <junit.version>5.11.4</junit.version>
     <jackson.version>2.22.2</jackson.version>
@@ -88,6 +89,12 @@
       <groupId>org.apache.maven</groupId>
       <artifactId>maven-core</artifactId>
       <version>${maven.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.resolver</groupId>
+      <artifactId>maven-resolver-api</artifactId>
+      <version>${maven.resolver.version}</version>
       <scope>provided</scope>
     </dependency>
     <dependency>

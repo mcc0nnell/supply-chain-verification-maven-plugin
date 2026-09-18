@@ -35,6 +35,28 @@ assert absent.component.pomRepositoryId == "fixture-repository"
 assert absent.locations.every { it.startsWith("file:") }
 assert absent.locations.every { !it.contains("repo.maven.apache.org") }
 
+
+def splitSbom = rows.find {
+    it.component.gav == "org.example:split-provenance:1.0.0" &&
+        it.check == "public-sbom-sidecar"
+}
+assert splitSbom != null
+assert splitSbom.component.artifactRepositoryId == "fixture-jar-repository"
+assert splitSbom.component.pomRepositoryId == "fixture-pom-repository"
+assert splitSbom.status == "FAIL"
+assert splitSbom.locations.every { it.contains("/repo-jar/") }
+
+def splitScorecard = rows.find {
+    it.component.gav == "org.example:split-provenance:1.0.0" &&
+        it.check == "openssf-scorecard-current"
+}
+assert splitScorecard != null
+assert splitScorecard.status == "UNKNOWN"
+assert splitScorecard.summary.contains("different repositories")
+assert splitScorecard.locations.contains("artifact-repository:fixture-jar-repository")
+assert splitScorecard.locations.contains("pom-repository:fixture-pom-repository")
+assert splitScorecard.locations.every { !it.contains("api.securityscorecards.dev") }
+
 def scm = rows.find {
     it.component.gav == "org.example:evidence-fixture:1.0.0" &&
         it.check == "openssf-scorecard-current"
