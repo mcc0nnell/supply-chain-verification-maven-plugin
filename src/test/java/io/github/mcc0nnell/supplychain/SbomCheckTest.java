@@ -11,102 +11,104 @@ class SbomCheckTest {
         URI.create("https://repo.maven.apache.org/maven2");
 
     @Test
-    void passesWhenPublishedCycloneDxJsonExists() {
-        var check = new SbomCheck(REPOSITORY, uri ->
-            new SbomCheck.ProbeResult(uri.toString().endsWith("-cyclonedx.json") ? 200 : 404));
+    void passesOnlyForSidecarExistenceAndSaysContentIsUnvalidated() {
+        var check = new SbomCheck((component, sidecar) ->
+            sidecar.location().endsWith("-cyclonedx.json")
+                ? SbomCheck.ProbeResult.foundResult()
+                : SbomCheck.ProbeResult.missingResult());
 
         var evidence = check.inspect(component());
 
         assertEquals(Evidence.Status.PASS, evidence.status());
-        assertEquals("public SBOM published", evidence.summary());
-        assertEquals(1, evidence.locations().size());
         assertEquals(
-            "https://repo.maven.apache.org/maven2/org/example/demo/1.2.3/demo-1.2.3-cyclonedx.json",
-            evidence.locations().get(0));
+            "public SBOM sidecar resolved through Maven; content and artifact binding are not yet validated",
+            evidence.summary());
+        assertEquals("false", evidence.attributes().get("contentValidated"));
+        assertEquals("maven-resolver", evidence.attributes().get("resolution"));
     }
 
     @Test
-    void triesLaterFormatsAfterMissingCandidate() {
-        var calls = new AtomicInteger();
-        var check = new SbomCheck(REPOSITORY, uri -> {
-            calls.incrementAndGet();
-            return new SbomCheck.ProbeResult(
-                uri.toString().endsWith("-cyclonedx.xml") ? 200 : 404);
+    void usesRepositoryBoundToResolvedComponent() {
+        var seen = new AtomicInteger();
+        var component = component(URI.create("https://mirror.example.test/maven2"));
+        var check = new SbomCheck((resolved, sidecar) -> {
+            if (!sidecar.location().contains("mirror.example.test")) {
+                throw new AssertionError("wrong repository: " + sidecar.location());
+            }
+            seen.incrementAndGet();
+            return SbomCheck.ProbeResult.missingResult();
         });
 
-        var evidence = check.inspect(component());
-
-        assertEquals(Evidence.Status.PASS, evidence.status());
-        assertEquals(2, calls.get());
-        assertEquals(
-            "https://repo.maven.apache.org/maven2/org/example/demo/1.2.3/demo-1.2.3-cyclonedx.xml",
-            evidence.locations().get(0));
-    }
-
-    @Test
-    void failsWhenAllKnownLocationsAreAbsent() {
-        var calls = new AtomicInteger();
-        var check = new SbomCheck(REPOSITORY, uri -> {
-            calls.incrementAndGet();
-            return new SbomCheck.ProbeResult(404);
-        });
-
-        var evidence = check.inspect(component());
+        var evidence = check.inspect(component);
 
         assertEquals(Evidence.Status.FAIL, evidence.status());
-        assertEquals(3, calls.get());
-        assertEquals(3, evidence.locations().size());
+        assertEquals(3, seen.get());
+    }
+
+    @Test
+    void unresolvedProbeResultRemainsUnknown() {
+        var check = new SbomCheck((component, sidecar) ->
+            SbomCheck.ProbeResult.unknownResult());
+
+        var evidence = check.inspect(component());
+
+        assertEquals(Evidence.Status.UNKNOWN, evidence.status());
+    }
+
+    @Test
+    void classifiedArtifactsRemainUnknown() {
+        var component = new ResolvedComponent(
+            "org.example", "demo", "1.2.3", "1.2.3",
+            "test-jar", "tests", "jar", ResolvedComponent.Kind.DEPENDENCY,
+            REPOSITORY, "central", "abc");
+        var check = new SbomCheck((resolved, sidecar) ->
+            SbomCheck.ProbeResult.foundResult());
+
+        var evidence = check.inspect(component);
+
+        assertEquals(Evidence.Status.UNKNOWN, evidence.status());
         assertEquals(
-            "no public SBOM found at known Maven repository locations",
+            "SBOM sidecar convention is not defined for classified artifacts",
             evidence.summary());
     }
 
     @Test
-    void remainsUnknownWhenRepositoryResponseIsTransient() {
-        var check = new SbomCheck(REPOSITORY, uri ->
-            new SbomCheck.ProbeResult(503));
+    void missingResolvedRepositoryRemainsUnknown() {
+        var check = new SbomCheck((resolved, sidecar) ->
+            SbomCheck.ProbeResult.foundResult());
 
-        var evidence = check.inspect(component());
-
-        assertEquals(Evidence.Status.UNKNOWN, evidence.status());
-        assertEquals("public SBOM lookup was not conclusive", evidence.summary());
-    }
-
-    @Test
-    void incompleteCoordinatesRemainUnknownWithoutNetworkAccess() {
-        var calls = new AtomicInteger();
-        var check = new SbomCheck(REPOSITORY, uri -> {
-            calls.incrementAndGet();
-            return new SbomCheck.ProbeResult(200);
-        });
-
-        var evidence = check.inspect(
-            new Coordinate("org.example", "demo", null, Coordinate.Kind.DEPENDENCY));
+        var evidence = check.inspect(new ResolvedComponent(
+            "org.example", "demo", "1.2.3", ResolvedComponent.Kind.DEPENDENCY));
 
         assertEquals(Evidence.Status.UNKNOWN, evidence.status());
-        assertEquals("component coordinates are incomplete", evidence.summary());
-        assertEquals(0, calls.get());
     }
 
     @Test
     void emitsKnownCandidateLocationsDeterministically() {
-        var check = new SbomCheck(REPOSITORY, uri ->
-            new SbomCheck.ProbeResult(404));
+        var check = new SbomCheck((resolved, sidecar) ->
+            SbomCheck.ProbeResult.missingResult());
 
-        var candidates = check.candidates(component());
+        var candidates = check.sidecars(component());
 
         assertEquals(
             "https://repo.maven.apache.org/maven2/org/example/demo/1.2.3/demo-1.2.3-cyclonedx.json",
-            candidates.get(0));
+            candidates.get(0).location());
         assertEquals(
             "https://repo.maven.apache.org/maven2/org/example/demo/1.2.3/demo-1.2.3-cyclonedx.xml",
-            candidates.get(1));
+            candidates.get(1).location());
         assertEquals(
             "https://repo.maven.apache.org/maven2/org/example/demo/1.2.3/demo-1.2.3.spdx.json",
-            candidates.get(2));
+            candidates.get(2).location());
     }
 
-    private static Coordinate component() {
-        return new Coordinate("org.example", "demo", "1.2.3", Coordinate.Kind.DEPENDENCY);
+    private static ResolvedComponent component() {
+        return component(REPOSITORY);
+    }
+
+    private static ResolvedComponent component(URI repository) {
+        return new ResolvedComponent(
+            "org.example", "demo", "1.2.3", "1.2.3",
+            "jar", null, "jar", ResolvedComponent.Kind.DEPENDENCY,
+            repository, "central", "abc");
     }
 }

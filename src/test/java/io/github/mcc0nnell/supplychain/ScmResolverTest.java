@@ -9,27 +9,22 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 class ScmResolverTest {
-    private static final URI REPOSITORY =
-        URI.create("https://repo.maven.apache.org/maven2");
-
     @Test
     void resolvesApacheGitboxToGithubMirror() {
-        var resolver = new ScmResolver(REPOSITORY, uri ->
-            new ScmResolver.FetchResult(200, pom(
-                "https://gitbox.apache.org/repos/asf?p=commons-lang.git")));
+        var resolver = resolver(pom(
+            "https://gitbox.apache.org/repos/asf?p=commons-lang.git"));
 
         var result = resolver.resolve(component());
 
         assertTrue(result.resolved());
         assertEquals("github.com/apache/commons-lang", result.scorecardProject());
-        assertTrue(result.locations().get(0).endsWith("commons-lang3-3.17.0.pom"));
+        assertTrue(result.locations().get(0).startsWith("maven-local:"));
     }
 
     @Test
     void resolvesDirectGithubScm() {
-        var resolver = new ScmResolver(REPOSITORY, uri ->
-            new ScmResolver.FetchResult(200, pom(
-                "scm:git:https://github.com/example/demo.git")));
+        var resolver = resolver(pom(
+            "scm:git:https://github.com/example/demo.git"));
 
         var result = resolver.resolve(component());
 
@@ -52,29 +47,69 @@ class ScmResolverTest {
         byte[] parent = pom(
             "https://github.com/apache/maven-surefire/tree/${project.scm.tag}");
 
-        var resolver = new ScmResolver(REPOSITORY, uri ->
-            uri.toString().contains("/org/apache/maven/surefire/surefire/")
-                ? new ScmResolver.FetchResult(200, parent)
-                : new ScmResolver.FetchResult(200, child));
+        var resolver = new ScmResolver(component ->
+            component.artifactId().equals("surefire")
+                ? new ScmResolver.PomResult(
+                    true, parent, "maven-local:org.apache.maven.surefire:surefire:3.2.5:pom")
+                : new ScmResolver.PomResult(
+                    true, child, "maven-local:org.apache.maven.plugins:maven-surefire-plugin:3.2.5:pom"));
 
-        var result = resolver.resolve(new Coordinate(
-            "org.apache.maven.plugins",
-            "maven-surefire-plugin",
-            "3.2.5",
-            Coordinate.Kind.BUILD_PLUGIN));
+        var result = resolver.resolve(new ResolvedComponent(
+            "org.apache.maven.plugins", "maven-surefire-plugin", "3.2.5", "3.2.5",
+            "maven-plugin", null, "jar", ResolvedComponent.Kind.BUILD_PLUGIN,
+            URI.create("https://repo.maven.apache.org/maven2"), "central", "abc"));
 
         assertTrue(result.resolved());
         assertEquals("github.com/apache/maven-surefire", result.scorecardProject());
         assertEquals(
-            "canonical source repository inherited from parent POM",
+            "source repository inherited from parent SCM metadata in Maven-resolved POM",
             result.summary());
     }
 
     @Test
+    void ignoresNestedScmElementsThatAreNotProjectMetadata() throws Exception {
+        byte[] nested = """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <build>
+                <plugins>
+                  <plugin>
+                    <configuration>
+                      <scm><url>https://github.com/apache/commons-lang</url></scm>
+                    </configuration>
+                  </plugin>
+                </plugins>
+              </build>
+            </project>
+            """.getBytes(StandardCharsets.UTF_8);
+
+        assertTrue(ScmResolver.scmCandidates(nested).isEmpty());
+    }
+
+    @Test
+    void rejectsScmWhenArtifactAndPomCameFromDifferentRepositories() {
+        var component = new ResolvedComponent(
+            "org.example", "shadow", "1.0", "1.0",
+            "jar", null, "jar", ResolvedComponent.Kind.DEPENDENCY,
+            URI.create("https://shadow.example.test/maven2"), "shadow",
+            URI.create("https://repo.maven.apache.org/maven2"), "central",
+            "artifact-sha", "pom-sha", null);
+        var resolver = resolver(pom("https://github.com/apache/commons-lang"));
+
+        var result = resolver.resolve(component);
+
+        assertFalse(result.resolved());
+        assertEquals(
+            "artifact and POM were resolved from different repositories; SCM association is not trusted",
+            result.summary());
+        assertTrue(result.locations().contains("artifact-repository:shadow"));
+        assertTrue(result.locations().contains("pom-repository:central"));
+    }
+
+    @Test
     void unsupportedScmRemainsUnknown() {
-        var resolver = new ScmResolver(REPOSITORY, uri ->
-            new ScmResolver.FetchResult(200, pom(
-                "https://git.example.org/example/demo.git")));
+        var resolver = resolver(pom(
+            "https://git.example.org/example/demo.git"));
 
         var result = resolver.resolve(component());
 
@@ -85,14 +120,16 @@ class ScmResolverTest {
     }
 
     @Test
-    void missingPomRemainsUnknown() {
-        var resolver = new ScmResolver(REPOSITORY, uri ->
-            new ScmResolver.FetchResult(404, new byte[0]));
+    void missingLocalPomRemainsUnknown() {
+        var resolver = new ScmResolver(component ->
+            new ScmResolver.PomResult(false, new byte[0], "maven-local:" + component.gav()));
 
         var result = resolver.resolve(component());
 
         assertFalse(result.resolved());
-        assertEquals("published POM not found", result.summary());
+        assertEquals(
+            "Maven-resolved POM not found in the local repository",
+            result.summary());
     }
 
     @Test
@@ -106,12 +143,16 @@ class ScmResolverTest {
                 .orElseThrow());
     }
 
-    private static Coordinate component() {
-        return new Coordinate(
-            "org.apache.commons",
-            "commons-lang3",
-            "3.17.0",
-            Coordinate.Kind.DEPENDENCY);
+    private static ScmResolver resolver(byte[] pom) {
+        return new ScmResolver(component ->
+            new ScmResolver.PomResult(true, pom, "maven-local:" + component.gav() + ":pom"));
+    }
+
+    private static ResolvedComponent component() {
+        return new ResolvedComponent(
+            "org.apache.commons", "commons-lang3", "3.17.0", "3.17.0",
+            "jar", null, "jar", ResolvedComponent.Kind.DEPENDENCY,
+            URI.create("https://repo.maven.apache.org/maven2"), "central", "abc");
     }
 
     private static byte[] pom(String scmUrl) {

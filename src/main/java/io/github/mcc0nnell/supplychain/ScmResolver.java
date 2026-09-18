@@ -3,10 +3,8 @@ package io.github.mcc0nnell.supplychain;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -14,26 +12,27 @@ import java.util.Optional;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 final class ScmResolver {
-    private final URI repository;
-    private final PomFetcher fetcher;
+    private static final long MAX_POM_BYTES = 2L * 1024 * 1024;
 
-    ScmResolver(URI repository, Duration timeout) {
-        this(repository, new HttpPomFetcher(timeout));
+    private final PomSource source;
+
+    ScmResolver(Path localRepository) {
+        this(new LocalPomSource(localRepository));
     }
 
-    ScmResolver(URI repository, PomFetcher fetcher) {
-        this.repository = repository;
-        this.fetcher = fetcher;
+    ScmResolver(PomSource source) {
+        this.source = source;
     }
 
-    Resolution resolve(Coordinate component) {
+    Resolution resolve(ResolvedComponent component) {
         return resolve(component, 0);
     }
 
-    private Resolution resolve(Coordinate component, int depth) {
+    private Resolution resolve(ResolvedComponent component, int depth) {
         if (component.groupId() == null || component.groupId().isBlank()
             || component.artifactId() == null || component.artifactId().isBlank()
             || component.version() == null || component.version().isBlank()) {
@@ -42,17 +41,25 @@ final class ScmResolver {
         if (depth > 4) {
             return Resolution.unknown("SCM parent resolution depth exceeded", List.of());
         }
-
-        URI pom = pomUri(component);
-        try {
-            FetchResult result = fetcher.fetch(pom);
-            if (result.statusCode() == 404 || result.statusCode() == 410) {
-                return Resolution.unknown("published POM not found", List.of(pom.toString()));
-            }
-            if (result.statusCode() < 200 || result.statusCode() >= 300) {
+        if (depth == 0) {
+            if (component.artifactRepositoryId() == null || component.pomRepositoryId() == null) {
                 return Resolution.unknown(
-                    "published POM lookup returned HTTP " + result.statusCode(),
-                    List.of(pom.toString()));
+                    "artifact/POM source provenance is unavailable; SCM association is not trusted",
+                    sourceLocations(component));
+            }
+            if (!component.artifactAndPomSourcesAgree()) {
+                return Resolution.unknown(
+                    "artifact and POM were resolved from different repositories; SCM association is not trusted",
+                    sourceLocations(component));
+            }
+        }
+
+        try {
+            PomResult result = source.read(component);
+            if (!result.found()) {
+                return Resolution.unknown(
+                    "Maven-resolved POM not found in the local repository",
+                    List.of(result.location()));
             }
 
             List<String> candidates = scmCandidates(result.body());
@@ -61,22 +68,22 @@ final class ScmResolver {
                 if (canonical.isPresent()) {
                     return Resolution.resolved(
                         canonical.get(),
-                        "canonical source repository resolved from published POM",
-                        List.of(pom.toString(), candidate));
+                        "source repository associated by SCM metadata in Maven-resolved POM",
+                        List.of(result.location(), candidate));
                 }
             }
 
             if (candidates.isEmpty()) {
-                Optional<Coordinate> parent = parentCoordinate(result.body());
+                Optional<ResolvedComponent> parent = parentCoordinate(result.body());
                 if (parent.isPresent()) {
                     Resolution inherited = resolve(parent.get(), depth + 1);
                     List<String> inheritedLocations = new ArrayList<>();
-                    inheritedLocations.add(pom.toString());
+                    inheritedLocations.add(result.location());
                     inheritedLocations.addAll(inherited.locations());
                     return inherited.resolved()
                         ? Resolution.resolved(
                             inherited.scorecardProject(),
-                            "canonical source repository inherited from parent POM",
+                            "source repository inherited from parent SCM metadata in Maven-resolved POM",
                             List.copyOf(inheritedLocations))
                         : Resolution.unknown(
                             inherited.summary(),
@@ -85,30 +92,29 @@ final class ScmResolver {
             }
 
             List<String> locations = new ArrayList<>();
-            locations.add(pom.toString());
+            locations.add(result.location());
             locations.addAll(candidates);
             return Resolution.unknown(
                 candidates.isEmpty()
-                    ? "published POM does not declare SCM metadata"
+                    ? "Maven-resolved POM does not declare SCM metadata"
                     : "SCM metadata is not a supported public Git repository",
                 List.copyOf(locations));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return Resolution.unknown("SCM lookup interrupted", List.of(pom.toString()));
         } catch (Exception e) {
             return Resolution.unknown(
                 "SCM lookup was not conclusive: " + e.getClass().getSimpleName(),
-                List.of(pom.toString()));
+                List.of("maven-local:" + component.gav() + ":pom"));
         }
     }
 
-    URI pomUri(Coordinate component) {
-        String base = repository.toString().replaceAll("/+$", "");
-        return URI.create(base + "/"
-            + component.groupId().replace('.', '/') + "/"
-            + component.artifactId() + "/"
-            + component.version() + "/"
-            + component.artifactId() + "-" + component.version() + ".pom");
+    private static List<String> sourceLocations(ResolvedComponent component) {
+        List<String> locations = new ArrayList<>();
+        if (component.artifactRepositoryId() != null) {
+            locations.add("artifact-repository:" + component.artifactRepositoryId());
+        }
+        if (component.pomRepositoryId() != null) {
+            locations.add("pom-repository:" + component.pomRepositoryId());
+        }
+        return List.copyOf(locations);
     }
 
     static Optional<String> canonicalize(String value) {
@@ -228,30 +234,17 @@ final class ScmResolver {
     }
 
     static List<String> scmCandidates(byte[] pom) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(false);
-        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        factory.setXIncludeAware(false);
-        factory.setExpandEntityReferences(false);
-
-        Element root = factory.newDocumentBuilder()
-            .parse(new ByteArrayInputStream(pom))
-            .getDocumentElement();
-
-        NodeList scmNodes = root.getElementsByTagName("scm");
-        if (scmNodes.getLength() == 0) {
+        Element root = parse(pom);
+        Element scm = directChild(root, "scm");
+        if (scm == null) {
             return List.of();
         }
 
-        Element scm = (Element) scmNodes.item(0);
         List<String> candidates = new ArrayList<>(3);
         for (String name : List.of("url", "connection", "developerConnection")) {
-            NodeList nodes = scm.getElementsByTagName(name);
-            if (nodes.getLength() > 0) {
-                String value = nodes.item(0).getTextContent();
+            Element node = directChild(scm, name);
+            if (node != null) {
+                String value = node.getTextContent();
                 if (value != null && !value.isBlank()) {
                     candidates.add(value.trim());
                 }
@@ -260,26 +253,13 @@ final class ScmResolver {
         return List.copyOf(candidates);
     }
 
-    static Optional<Coordinate> parentCoordinate(byte[] pom) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(false);
-        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        factory.setXIncludeAware(false);
-        factory.setExpandEntityReferences(false);
-
-        Element root = factory.newDocumentBuilder()
-            .parse(new ByteArrayInputStream(pom))
-            .getDocumentElement();
-
-        NodeList parents = root.getElementsByTagName("parent");
-        if (parents.getLength() == 0) {
+    static Optional<ResolvedComponent> parentCoordinate(byte[] pom) throws Exception {
+        Element root = parse(pom);
+        Element parent = directChild(root, "parent");
+        if (parent == null) {
             return Optional.empty();
         }
 
-        Element parent = (Element) parents.item(0);
         String groupId = childText(parent, "groupId");
         String artifactId = childText(parent, "artifactId");
         String version = childText(parent, "version");
@@ -288,27 +268,49 @@ final class ScmResolver {
             return Optional.empty();
         }
 
-        return Optional.of(new Coordinate(
+        return Optional.of(new ResolvedComponent(
             groupId.trim(),
             artifactId.trim(),
             version.trim(),
-            Coordinate.Kind.DEPENDENCY));
+            ResolvedComponent.Kind.DEPENDENCY));
+    }
+
+    private static Element parse(byte[] pom) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(false);
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        return factory.newDocumentBuilder()
+            .parse(new ByteArrayInputStream(pom))
+            .getDocumentElement();
+    }
+
+    private static Element directChild(Element parent, String name) {
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (node instanceof Element element && name.equals(element.getTagName())) {
+                return element;
+            }
+        }
+        return null;
     }
 
     private static String childText(Element parent, String name) {
-        NodeList children = parent.getElementsByTagName(name);
-        if (children.getLength() == 0) {
-            return null;
-        }
-        return children.item(0).getTextContent();
+        Element child = directChild(parent, name);
+        return child == null ? null : child.getTextContent();
     }
 
     @FunctionalInterface
-    interface PomFetcher {
-        FetchResult fetch(URI uri) throws IOException, InterruptedException;
+    interface PomSource {
+        PomResult read(ResolvedComponent component) throws IOException;
     }
 
-    record FetchResult(int statusCode, byte[] body) {}
+    record PomResult(boolean found, byte[] body, String location) {}
 
     record Resolution(
         String scorecardProject,
@@ -331,32 +333,34 @@ final class ScmResolver {
         }
     }
 
-    private static final class HttpPomFetcher implements PomFetcher {
-        private final HttpClient client;
-        private final Duration timeout;
+    private static final class LocalPomSource implements PomSource {
+        private final Path localRepository;
 
-        private HttpPomFetcher(Duration timeout) {
-            if (timeout == null || timeout.isZero() || timeout.isNegative()) {
-                throw new IllegalArgumentException("request timeout must be positive");
-            }
-            this.timeout = timeout;
-            this.client = HttpClient.newBuilder()
-                .connectTimeout(timeout)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        private LocalPomSource(Path localRepository) {
+            this.localRepository = localRepository;
         }
 
         @Override
-        public FetchResult fetch(URI uri) throws IOException, InterruptedException {
-            HttpRequest request = HttpRequest.newBuilder(uri)
-                .timeout(timeout)
-                .header("User-Agent", "supply-chain-verification-maven-plugin/0.3")
-                .GET()
-                .build();
-            HttpResponse<byte[]> response = client.send(
-                request,
-                HttpResponse.BodyHandlers.ofByteArray());
-            return new FetchResult(response.statusCode(), response.body());
+        public PomResult read(ResolvedComponent component) throws IOException {
+            String baseVersion = component.baseVersion() == null
+                ? component.version()
+                : component.baseVersion();
+            Path pom = localRepository
+                .resolve(component.groupId().replace('.', '/'))
+                .resolve(component.artifactId())
+                .resolve(baseVersion)
+                .resolve(component.artifactId() + "-" + baseVersion + ".pom");
+
+            String location = "maven-local:" + component.groupId() + ":"
+                + component.artifactId() + ":" + baseVersion + ":pom";
+            if (!Files.isRegularFile(pom)) {
+                return new PomResult(false, new byte[0], location);
+            }
+            long size = Files.size(pom);
+            if (size > MAX_POM_BYTES) {
+                throw new IOException("POM exceeds " + MAX_POM_BYTES + " bytes");
+            }
+            return new PomResult(true, Files.readAllBytes(pom), location);
         }
     }
 }
