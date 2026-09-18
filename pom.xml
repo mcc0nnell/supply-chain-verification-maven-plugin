@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.mcc0nnell</groupId>
   <artifactId>supply-chain-verification-maven-plugin</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <packaging>maven-plugin</packaging>
   <name>Supply Chain Verification Maven Plugin</name>
   <description>Runnable architecture spike for Maven Support &amp; Care issue 224.</description>
