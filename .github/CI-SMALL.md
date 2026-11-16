@@ -14,3 +14,9 @@ Verification reproduces the former GitHub jobs:
 **Limitations:** Current CI-small triggering covers main-branch pushes only. PR-head tests and GitHub required-check status reporting are not yet wired. A successful main pipeline is not proof of an untested PR head. GitLab CI jobs are the evidence source; skipped or missing jobs never count as passing.
 
 Never commit webhook tokens or CI credentials into this source repository.
+
+## Pull-request head validation requirements
+
+A PR-head pipeline must match the GitHub webhook repository and pull-request number against the live GitHub API record. It must verify that the base branch is `main`, that the head is in the same repository, and that the exact PR-head commit was checked out before executing the Maven matrix or live evidence checks. Fork PRs are deliberately unsupported in this first version.
+
+The GitHub required-check status bridge is independent of CI-small execution and remains an open integration. A green `main` pipeline cannot stand in for PR-head verification.
